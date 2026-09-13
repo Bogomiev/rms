@@ -30,3 +30,8 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Local configuration and database
+/config/local.yaml
+/storage/storage.db
+/storage/storage.db-*

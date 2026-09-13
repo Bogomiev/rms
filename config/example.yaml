@@ -1,0 +1,34 @@
+env: local
+# Set RMS_SIGNING_KEY to a random signing key of at least 32 bytes.
+http_server:
+  port: 8082
+  timeout: 4s
+  idle_timeout: 60s
+db:
+  host: localhost
+  port: 5432
+  user: rms
+  password: replace-with-local-password
+  dbname: rms
+  sslmode: disable
+  # sslrootcert: /path/to/root.crt
+  # sslcert: /path/to/client.crt
+  # sslkey: /path/to/client.key
+  connect_timeout: 5s
+  max_open_conns: 10
+  max_idle_conns: 5
+  conn_max_lifetime: 30m
+  conn_max_idle_time: 5m
+token_TTL: 15m
+refresh_token_TTL: 2160h # 90 days
+
+scheduler:
+  timezone: Asia/Vladivostok
+  jobs:
+    session_cleanup:
+      enabled: true
+      schedule: "@every 1m"
+      timeout: 10s
+
+# Required only for an empty users table; 8..72 bytes.
+first_admin_pwd: ""
