@@ -64,7 +64,7 @@ func New(cfg Config, deps Dependencies) *App {
 		r.With(hdlr.GetAdminMiddlewareFunc(tokenMaker, deps.Auth)).Post("/", handler.CreateUser)
 	})
 
-	address := fmt.Sprintf("localhost:%d", cfg.Port)
+	address := fmt.Sprintf(":%d", cfg.Port)
 
 	srv := &http.Server{
 		Addr:         address,
