@@ -35,3 +35,7 @@ go.work.sum
 /config/local.yaml
 /storage/storage.db
 /storage/storage.db-*
+
+# Deploy tooling (Makefile/scripts) state and logs
+/deploy.log
+/.deploy.lock

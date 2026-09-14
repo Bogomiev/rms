@@ -1,0 +1,57 @@
+name: rms
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: rms-postgres
+    profiles: ["local-db"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-rms}
+      POSTGRES_USER: ${DB_USER:-rms}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-rms}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - rms_pgdata:/var/lib/postgresql/data
+    networks:
+      - rms-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-rms} -d ${DB_NAME:-rms}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  rms:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: rms-app:local
+    container_name: rms-app
+    restart: unless-stopped
+    environment:
+      CONFIG_PATH: /app/config/local.yaml
+      RMS_SIGNING_KEY: ${RMS_SIGNING_KEY:?RMS_SIGNING_KEY не задан — запустите make install}
+      RMS_APP_ORIGINS: ${RMS_APP_ORIGINS:-http://localhost:3000,http://localhost:8082}
+    ports:
+      - "${APP_PORT:-8082}:8082"
+    volumes:
+      - ./config/local.yaml:/app/config/local.yaml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - rms-network
+    healthcheck:
+      test: ["CMD", "curl", "-s", "-o", "/dev/null", "http://localhost:8082/usertokenvalid?token=healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
+
+networks:
+  rms-network:
+    driver: bridge
+
+volumes:
+  rms_pgdata:

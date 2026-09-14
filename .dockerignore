@@ -1,0 +1,15 @@
+.git
+.gitignore
+.vscode
+scripts
+Makefile
+docker-compose.yml
+Dockerfile
+.dockerignore
+.env
+.env.*
+deploy.log
+config/local.yaml
+storage/storage.db
+storage/storage.db-*
+*.md
