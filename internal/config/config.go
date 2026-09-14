@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"rms/internal/scheduler"
 	"strings"
@@ -11,14 +12,18 @@ import (
 )
 
 type Config struct {
-	FirstAdminPwd   string           `yaml:"first_admin_pwd"`
-	Scheduler       scheduler.Config `yaml:"scheduler"`
-	Env             string           `yaml:"env" env-default:"local"`
-	SigningKey      string           `yaml:"signing_key" env:"RMS_SIGNING_KEY"`
-	Db              DbSetting        `yaml:"db"`
-	HTTPServer      `yaml:"http_server"`
-	TokenTTL        time.Duration `yaml:"token_TTL" env-default:"15m"`
-	RefreshTokenTTL time.Duration `yaml:"refresh_token_TTL" env-default:"2160h"`
+	AppOrigins         []string         `yaml:"app_origins" env:"RMS_APP_ORIGINS" env-separator:","`
+	AppOrigin          string           `yaml:"app_origin" env:"RMS_APP_ORIGIN"`
+	MaxLoginAttempts   int              `yaml:"max_login_attempts" env:"RMS_MAX_LOGIN_ATTEMPTS" env-default:"5"`
+	LoginBlockDuration time.Duration    `yaml:"login_block_duration" env:"RMS_LOGIN_BLOCK_DURATION" env-default:"15m"`
+	FirstAdminPwd      string           `yaml:"first_admin_pwd"`
+	Scheduler          scheduler.Config `yaml:"scheduler"`
+	Env                string           `yaml:"env" env-default:"local"`
+	SigningKey         string           `yaml:"signing_key" env:"RMS_SIGNING_KEY"`
+	Db                 DbSetting        `yaml:"db"`
+	HTTPServer         `yaml:"http_server"`
+	TokenTTL           time.Duration `yaml:"token_TTL" env-default:"15m"`
+	RefreshTokenTTL    time.Duration `yaml:"refresh_token_TTL" env-default:"2160h"`
 }
 
 type HTTPServer struct {
@@ -60,7 +65,34 @@ func Load() (*Config, error) {
 	return &cfg, nil
 }
 
+// AllowedAppOrigins prefers the list; app_origin remains a legacy fallback.
+func (c Config) AllowedAppOrigins() []string {
+	if len(c.AppOrigins) > 0 {
+		return c.AppOrigins
+	}
+	if c.AppOrigin != "" {
+		return []string{c.AppOrigin}
+	}
+	return nil
+}
+
 func (c Config) Validate() error {
+	origins := c.AllowedAppOrigins()
+	if len(origins) == 0 {
+		return fmt.Errorf("app_origins must contain at least one origin")
+	}
+	for _, value := range origins {
+		origin, err := url.Parse(value)
+		if err != nil || origin.Host == "" || origin.User != nil || origin.Path != "" || origin.RawQuery != "" || origin.Fragment != "" || origin.ForceQuery || strings.ContainsAny(value, "?#") || (origin.Scheme != "http" && origin.Scheme != "https") {
+			return fmt.Errorf("app_origins entries must be an HTTP(S) origin without a path")
+		}
+		if c.Env == "prod" && origin.Scheme != "https" {
+			return fmt.Errorf("app_origins entries must use HTTPS in prod")
+		}
+	}
+	if c.MaxLoginAttempts < 1 || c.LoginBlockDuration <= 0 {
+		return fmt.Errorf("login attempt limit and block duration must be positive")
+	}
 	if c.Env != "local" && c.Env != "dev" && c.Env != "prod" {
 		return fmt.Errorf("env must be local, dev or prod")
 	}

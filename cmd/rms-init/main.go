@@ -30,7 +30,7 @@ func run() error {
 		return fmt.Errorf("unexpected positional arguments")
 	}
 	pass := os.Getenv("RMS_ADMIN_PASSWORD")
-	if messages := validation.NewUser(*userToken, *name, pass); len(messages) > 0 {
+	if messages := validation.NewUser(*userToken, *name, pass, true); len(messages) > 0 {
 		return fmt.Errorf("invalid administrator: %s", strings.Join(messages, "; "))
 	}
 	cfg, err := config.Load()

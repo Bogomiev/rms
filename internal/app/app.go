@@ -38,11 +38,11 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, error)
 	}
 	tokens := token.NewJWTMaker(cfg.SigningKey)
 	authService := auth.New(auth.Config{
-		TokenTTL: cfg.TokenTTL, RefreshTokenTTL: cfg.RefreshTokenTTL,
+		TokenTTL: cfg.TokenTTL, RefreshTokenTTL: cfg.RefreshTokenTTL, MaxLoginAttempts: cfg.MaxLoginAttempts, LoginBlockDuration: cfg.LoginBlockDuration,
 	}, auth.Dependencies{Logger: log, Users: db, Sessions: db, Tokens: tokens})
 	userService := user.New(log, db)
 	server := httpapp.New(httpapp.Config{
-		TokenTTL: cfg.TokenTTL, RefreshTokenTTL: cfg.RefreshTokenTTL, Port: cfg.Port, Timeout: cfg.Timeout, IdleTimeout: cfg.IdleTimeout,
+		TokenTTL: cfg.TokenTTL, RefreshTokenTTL: cfg.RefreshTokenTTL, AppOrigins: cfg.AllowedAppOrigins(), Port: cfg.Port, Timeout: cfg.Timeout, IdleTimeout: cfg.IdleTimeout,
 	}, httpapp.Dependencies{Logger: log, Auth: authService, Users: userService, Tokens: tokens, Products: product.New(log, db), Stores: store.New(log, db)})
 	jobs, err := scheduler.New(ctx, log, cfg.Scheduler, map[string]scheduler.Job{"session_cleanup": sessionCleanupJob(log, db)})
 	if err != nil {

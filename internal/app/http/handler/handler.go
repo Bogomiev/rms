@@ -8,6 +8,7 @@ import (
 )
 
 type AuthService interface {
+	SessionValidator
 	Login(context.Context, string, string) (string, string, string, *models.User, error)
 	Logout(context.Context, string) error
 	RefreshToken(context.Context, string) (string, string, string, error)
@@ -24,6 +25,7 @@ type TokenVerifier interface {
 }
 
 type Handler struct {
+	tokens         TokenVerifier
 	authService    AuthService
 	userService    UserService
 	productService ProductService

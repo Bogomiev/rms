@@ -17,14 +17,24 @@ import (
 )
 
 type usersStub struct {
-	user models.User
-	err  error
-	ctx  context.Context
+	user    models.User
+	err     error
+	ctx     context.Context
+	attempt models.LoginAttempt
 }
 
 func (s *usersStub) User(ctx context.Context, _ string) (models.User, error) {
 	s.ctx = ctx
 	return s.user, s.err
+}
+
+func (s *usersStub) WithLoginAttempt(ctx context.Context, _ string, check func(*models.LoginAttempt) error) error {
+	s.ctx = ctx
+	if s.err != nil {
+		return s.err
+	}
+	s.attempt.User = s.user
+	return check(&s.attempt)
 }
 
 type sessionsStub struct {
@@ -49,9 +59,9 @@ type tokensStub struct {
 	err       error
 }
 
-func (s *tokensStub) CreateToken(id int64, userToken string, admin bool, ttl time.Duration, purpose string) (string, *token.UserClaims, error) {
+func (s *tokensStub) CreateToken(id int64, userToken string, admin bool, ttl time.Duration, purpose string, sessionID ...string) (string, *token.UserClaims, error) {
 	s.durations = append(s.durations, ttl)
-	claims, err := token.NewUserClaims(id, userToken, admin, ttl, purpose)
+	claims, err := token.NewUserClaims(id, userToken, admin, ttl, purpose, sessionID...)
 	return fmt.Sprintf("token-%d", len(s.durations)), claims, err
 }
 func (s *tokensStub) VerifyToken(string) (*token.UserClaims, error) {
@@ -74,10 +84,10 @@ func TestLoginUsesInjectedTokensAndRequestContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if access != "token-1" || refresh != "token-2" || id != sessions.session.ID {
+	if access != "token-2" || refresh != "token-1" || id != sessions.session.ID {
 		t.Fatal("injected tokens not returned and persisted")
 	}
-	if len(tokens.durations) != 2 || tokens.durations[0] != time.Minute || tokens.durations[1] != time.Hour {
+	if len(tokens.durations) != 2 || tokens.durations[0] != time.Hour || tokens.durations[1] != time.Minute {
 		t.Fatal("incorrect token configuration")
 	}
 	if users.ctx != ctx || sessions.ctx != ctx {
@@ -158,5 +168,83 @@ func TestRefreshChecksSessionOwnerAndExpiration(t *testing.T) {
 				t.Fatalf("error = %v", err)
 			}
 		})
+	}
+}
+
+func (s *sessionsStub) RotateSession(ctx context.Context, _, _ string, ss *models.Session) (*models.Session, error) {
+	return s.CreateSession(ctx, ss)
+}
+
+func TestPINLockoutAndReset(t *testing.T) {
+	hash, err := password.HashPassword("12345")
+	if err != nil {
+		t.Fatal(err)
+	}
+	users := &usersStub{user: models.User{ID: 1, UserToken: "invitation", Password: hash}}
+	a := New(Config{TokenTTL: time.Minute, RefreshTokenTTL: time.Hour, MaxLoginAttempts: 5, LoginBlockDuration: 15 * time.Minute}, Dependencies{Logger: testLogger(), Users: users, Sessions: &sessionsStub{}, Tokens: token.NewJWTMaker("test-key")})
+	for i := 1; i <= 5; i++ {
+		_, _, _, _, err := a.Login(context.Background(), "invitation", "00000")
+		var blocked *services.LoginBlockedError
+		if i < 5 && !errors.Is(err, services.ErrInvalidCredentials) {
+			t.Fatalf("attempt %d: %v", i, err)
+		}
+		if i == 5 && !errors.As(err, &blocked) {
+			t.Fatalf("fifth attempt did not lock: %v", err)
+		}
+	}
+	until := users.attempt.BlockedUntil
+	if time.Until(until) < 14*time.Minute || time.Until(until) > 15*time.Minute {
+		t.Fatal("wrong duration", until)
+	}
+	_, _, _, _, err = a.Login(context.Background(), "invitation", "12345")
+	var blocked *services.LoginBlockedError
+	if !errors.As(err, &blocked) || !blocked.Until.Equal(until) {
+		t.Fatal("correct PIN bypassed or extended block", err)
+	}
+	users.attempt.BlockedUntil = time.Now().Add(-time.Second)
+	_, _, _, _, err = a.Login(context.Background(), "invitation", "00000")
+	if !errors.Is(err, services.ErrInvalidCredentials) || users.attempt.Failures != 1 {
+		t.Fatal("expired block did not reset", err)
+	}
+	_, _, _, _, err = a.Login(context.Background(), "invitation", "12345")
+	if err != nil || users.attempt.Failures != 0 || !users.attempt.BlockedUntil.IsZero() {
+		t.Fatal("successful login did not reset", err)
+	}
+	a.maxLoginAttempts = 2
+	for i := 0; i < 2; i++ {
+		_, _, _, _, err = a.Login(context.Background(), "invitation", "00000")
+	}
+	if !errors.As(err, &blocked) {
+		t.Fatal("configured threshold ignored", err)
+	}
+}
+
+func TestRefreshRotatesCSRFAndAccessSession(t *testing.T) {
+	maker := token.NewJWTMaker("test-key")
+	sessions := &sessionsStub{}
+	hash, _ := password.HashPassword("12345")
+	a := New(Config{TokenTTL: time.Minute, RefreshTokenTTL: time.Hour}, Dependencies{Logger: testLogger(), Users: &usersStub{user: models.User{ID: 42, UserToken: "invitation", Password: hash}}, Sessions: sessions, Tokens: maker})
+	oldID, oldAccess, oldRefresh, _, err := a.Login(context.Background(), "invitation", "12345")
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldClaims, err := maker.VerifyToken(oldAccess)
+	if err != nil || oldClaims.CSRFToken == "" || oldClaims.SessionID != oldID {
+		t.Fatal("access missing CSRF/session", err)
+	}
+	newID, newAccess, newRefresh, err := a.RefreshToken(context.Background(), oldRefresh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims, err := maker.VerifyToken(newAccess)
+	if err != nil || claims.CSRFToken == oldClaims.CSRFToken || claims.SessionID != newID || oldID == newID || oldRefresh == newRefresh {
+		t.Fatal("refresh did not rotate", err)
+	}
+	if err = a.ValidateAccess(context.Background(), claims); err != nil {
+		t.Fatal(err)
+	}
+	sessions.session.IsRevoked = true
+	if err = a.ValidateAccess(context.Background(), claims); !errors.Is(err, services.ErrInvalidSession) {
+		t.Fatal("revoked access accepted", err)
 	}
 }

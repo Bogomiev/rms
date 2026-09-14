@@ -12,6 +12,8 @@ const Access = "access"
 const Refresh = "refresh"
 
 type UserClaims struct {
+	CSRFToken string `json:"csrfToken,omitempty"`
+	SessionID string `json:"sid,omitempty"`
 	Purpose   string `json:"purpose"`
 	UserID    int64  `json:"id"`
 	UserToken string `json:"user_token"`
@@ -19,13 +21,26 @@ type UserClaims struct {
 	jwt.RegisteredClaims
 }
 
-func NewUserClaims(id int64, userToken string, isAdmin bool, duration time.Duration, purpose string) (*UserClaims, error) {
+func NewUserClaims(id int64, userToken string, isAdmin bool, duration time.Duration, purpose string, sessionID ...string) (*UserClaims, error) {
 	tokenID, err := uuid.NewRandom()
 	if err != nil {
 		return nil, fmt.Errorf("error generating token ID: %w", err)
 	}
 
+	csrf := ""
+	sid := ""
+	if purpose == Access {
+		csrfID, err := uuid.NewRandom()
+		if err != nil {
+			return nil, err
+		}
+		csrf = csrfID.String()
+		if len(sessionID) > 0 {
+			sid = sessionID[0]
+		}
+	}
 	return &UserClaims{
+		CSRFToken: csrf, SessionID: sid,
 		Purpose:   purpose,
 		UserToken: userToken,
 		UserID:    id,

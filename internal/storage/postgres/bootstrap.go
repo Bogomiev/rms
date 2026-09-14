@@ -47,7 +47,7 @@ func (s *Storage) ensureFirstAdmin(ctx context.Context, firstAdminPwd string) er
 	if exists {
 		return tx.Commit()
 	}
-	if len(firstAdminPwd) < 8 || len(firstAdminPwd) > 72 {
+	if len(firstAdminPwd) < 5 || len(firstAdminPwd) > 72 {
 		return fmt.Errorf("first_admin_pwd must contain 8 to 72 bytes when users is empty")
 	}
 	hash, err := password.HashPassword(firstAdminPwd)

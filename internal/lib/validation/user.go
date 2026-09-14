@@ -15,13 +15,14 @@ func Credentials(userToken, password string) []string {
 	}
 	return messages
 }
-func NewUser(userToken, name, password string) []string {
+func NewUser(userToken, name, password string, isAdmin bool) []string {
 	messages := Credentials(userToken, password)
 	if strings.TrimSpace(name) == "" || utf8.RuneCountInString(name) > 255 {
 		messages = append(messages, "name must contain 1 to 255 characters")
 	}
-	if len(password) < 8 {
-		messages = append(messages, "new password must contain at least 8 bytes")
+	isPIN := len(password) == 8 && strings.Trim(password, "0123456789") == ""
+	if len(password) < 5 && (isAdmin || !isPIN) {
+		messages = append(messages, "new password must contain at least 8 bytes (non-admin users may use a 5-digit PIN)")
 	}
 	return messages
 }

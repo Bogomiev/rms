@@ -4,6 +4,8 @@ CREATE TABLE IF NOT EXISTS users (
  user_token VARCHAR(255) NOT NULL UNIQUE CHECK (length(trim(user_token)) > 0),
  password VARCHAR(255) NOT NULL,
  is_admin BOOLEAN NOT NULL DEFAULT false,
+ login_failures INTEGER NOT NULL DEFAULT 0 CHECK (login_failures >= 0),
+ login_blocked_until TIMESTAMPTZ,
  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
  updated_at TIMESTAMPTZ
 );

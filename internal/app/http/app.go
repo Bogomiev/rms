@@ -24,6 +24,7 @@ type App struct {
 }
 
 type Config struct {
+	AppOrigins      []string
 	TokenTTL        time.Duration
 	RefreshTokenTTL time.Duration
 	Port            int
@@ -46,19 +47,21 @@ func New(cfg Config, deps Dependencies) *App {
 	handler := hdlr.NewHandler(deps.Auth, deps.Users)
 	handler.Configure(deps.Products, deps.Stores, cfg.TokenTTL, cfg.RefreshTokenTTL)
 	tokenMaker := deps.Tokens
+	handler.ConfigureSecurity(tokenMaker)
 	router.Get("/usertokenvalid", handler.UserTokenValid)
-	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker)).Get("/products", handler.Products)
-	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker)).Get("/stores", handler.Stores)
+	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/products", handler.Products)
+	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/stores", handler.Stores)
 
 	router.Route("/auth", func(r chi.Router) {
-		r.Post("/login", handler.Login)
-		r.Post("/logout", handler.Logout)
-		r.Post("/refresh", handler.RefreshToken)
+		r.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/session", handler.Session)
+		r.With(hdlr.OriginMiddleware(cfg.AppOrigins...)).Post("/login", handler.Login)
+		r.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Post("/logout", handler.Logout)
+		r.With(hdlr.OriginMiddleware(cfg.AppOrigins...)).Post("/refresh", handler.RefreshToken)
 	})
 
 	router.Route("/users", func(r chi.Router) {
-		r.With(hdlr.GetAuthMiddlewareFunc(tokenMaker)).Get("/", handler.UserList)
-		r.With(hdlr.GetAdminMiddlewareFunc(tokenMaker)).Post("/", handler.CreateUser)
+		r.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/", handler.UserList)
+		r.With(hdlr.GetAdminMiddlewareFunc(tokenMaker, deps.Auth)).Post("/", handler.CreateUser)
 	})
 
 	address := fmt.Sprintf("localhost:%d", cfg.Port)

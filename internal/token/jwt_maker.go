@@ -15,8 +15,8 @@ func NewJWTMaker(signingKey string) *JWTMaker {
 	return &JWTMaker{signingKey}
 }
 
-func (maker *JWTMaker) CreateToken(id int64, userToken string, isAdmin bool, duration time.Duration, purpose string) (string, *UserClaims, error) {
-	claims, err := NewUserClaims(id, userToken, isAdmin, duration, purpose)
+func (maker *JWTMaker) CreateToken(id int64, userToken string, isAdmin bool, duration time.Duration, purpose string, sessionID ...string) (string, *UserClaims, error) {
+	claims, err := NewUserClaims(id, userToken, isAdmin, duration, purpose, sessionID...)
 	if err != nil {
 		return "", nil, err
 	}

@@ -100,3 +100,31 @@ func (s *Storage) DeleteExpiredSessions(ctx context.Context, limit int) (int64, 
 	}
 	return result.RowsAffected()
 }
+
+// RotateSession consumes a refresh token once and inserts its replacement atomically.
+func (s *Storage) RotateSession(ctx context.Context, id, refresh string, next *models.Session) (*models.Session, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE id=$1 AND refresh_token=$2 AND NOT is_revoked AND expires_at > CURRENT_TIMESTAMP`, id, refresh)
+	if err != nil {
+		return nil, err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if count != 1 {
+		return nil, storage.ErrSessionNotFound
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO sessions (id,user_id,refresh_token,is_revoked,expires_at) VALUES ($1,$2,$3,$4,$5)`, next.ID, next.UserID, next.RefreshToken, next.IsRevoked, next.ExpiresAt)
+	if err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+	return next, nil
+}

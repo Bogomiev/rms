@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"rms/internal/token"
@@ -13,6 +14,7 @@ import (
 func TestAuthenticationCookies(t *testing.T) {
 	stub := serviceStub{call: func(context.Context) error { return nil }}
 	h := NewHandler(stub, stub)
+	h.ConfigureSecurity(verifierStub{claims: &token.UserClaims{CSRFToken: "csrf-value"}})
 	h.Configure(nil, nil, 7*time.Minute, 2160*time.Hour)
 	for _, action := range []string{"login", "refresh", "logout"} {
 		t.Run(action, func(t *testing.T) {
@@ -34,6 +36,14 @@ func TestAuthenticationCookies(t *testing.T) {
 			}
 			if strings.Contains(w.Body.String(), `"access"`) || strings.Contains(w.Body.String(), `"refresh"`) {
 				t.Fatal("tokens leaked into JSON")
+			}
+			if action != "logout" {
+				var body struct {
+					CSRFToken string `json:"csrfToken"`
+				}
+				if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil || body.CSRFToken != "csrf-value" {
+					t.Fatal("missing CSRF response", w.Body.String(), err)
+				}
 			}
 			cookies := w.Result().Cookies()
 			if len(cookies) != 2 {
@@ -72,7 +82,7 @@ func TestTokensMustComeFromCookies(t *testing.T) {
 	for _, serve := range []http.HandlerFunc{h.RefreshToken, h.Logout} {
 		w := httptest.NewRecorder()
 		serve(w, httptest.NewRequest("POST", "/", strings.NewReader(`{"refreshToken":"refresh"}`)))
-		if w.Code != 400 {
+		if w.Code != 401 {
 			t.Fatal(w.Code)
 		}
 	}

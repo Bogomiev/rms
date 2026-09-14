@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 	"rms/internal/lib/validation"
+	"rms/internal/services"
 
 	"rms/internal/domain/models"
 	resp "rms/internal/lib/api/response"
@@ -24,6 +25,7 @@ type errorResponse struct {
 }
 
 type loginResponse struct {
+	CSRFToken string `json:"csrfToken"`
 	resp.Response
 	Data loginData `json:"data,omitempty"`
 }
@@ -33,6 +35,7 @@ type logoutResponse struct {
 }
 
 type refreshResponse struct {
+	CSRFToken string `json:"csrfToken"`
 	resp.Response
 	Data tokenData `json:"data,omitempty"`
 }
@@ -77,8 +80,14 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	claims, err := h.tokens.VerifyToken(accessToken)
+	if err != nil || claims == nil || claims.CSRFToken == "" {
+		writeServiceError(w, r, services.ErrInvalidSession)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
 	h.setTokenCookies(w, accessToken, refreshToken)
-	respLoginOK(w, r, sessionId, user)
+	respLoginOK(w, r, sessionId, user, claims.CSRFToken)
 }
 
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
@@ -86,7 +95,7 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 
 	cookie, cookieErr := r.Cookie("refresh_token")
 	if cookieErr != nil || cookie.Value == "" {
-		resp.HttpResponseError(w, r, http.StatusBadRequest, 1, []string{"refresh token is required"})
+		resp.HttpResponseError(w, r, http.StatusUnauthorized, services.ResultSessionInvalid, []string{"refresh token is required"})
 		return
 	}
 
@@ -106,7 +115,7 @@ func (h *Handler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 
 	cookie, cookieErr := r.Cookie("refresh_token")
 	if cookieErr != nil || cookie.Value == "" {
-		resp.HttpResponseError(w, r, http.StatusBadRequest, 1, []string{"refresh token is required"})
+		resp.HttpResponseError(w, r, http.StatusUnauthorized, services.ResultSessionInvalid, []string{"refresh token is required"})
 		return
 	}
 
@@ -117,8 +126,14 @@ func (h *Handler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	claims, err := h.tokens.VerifyToken(accessToken)
+	if err != nil || claims == nil || claims.CSRFToken == "" {
+		writeServiceError(w, r, services.ErrInvalidSession)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
 	h.setTokenCookies(w, accessToken, refreshToken)
-	respRefreshOK(w, r, sessionId)
+	respRefreshOK(w, r, sessionId, claims.CSRFToken)
 }
 
 func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
@@ -129,7 +144,7 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	errMessages := validation.NewUser(u.UserToken, u.Name, u.Password)
+	errMessages := validation.NewUser(u.UserToken, u.Name, u.Password, u.IsAdmin)
 
 	if len(errMessages) > 0 {
 		resp.HttpResponseError(w, r, http.StatusBadRequest, 1, errMessages)
@@ -177,10 +192,11 @@ func (h *Handler) UserList(w http.ResponseWriter, r *http.Request) {
 }
 
 func respLoginOK(w http.ResponseWriter, r *http.Request,
-	sessionId string, user *models.User) {
+	sessionId string, user *models.User, csrf string) {
 
 	render.JSON(w, r, loginResponse{
-		Response: resp.OK(),
+		CSRFToken: csrf,
+		Response:  resp.OK(),
 		Data: loginData{
 			tokenData: tokenData{
 				SessionID: sessionId,
@@ -196,10 +212,11 @@ func respLoginOK(w http.ResponseWriter, r *http.Request,
 }
 
 func respRefreshOK(w http.ResponseWriter, r *http.Request,
-	sessionId string) {
+	sessionId string, csrf string) {
 
 	render.JSON(w, r, refreshResponse{
-		Response: resp.OK(),
+		CSRFToken: csrf,
+		Response:  resp.OK(),
 		Data: tokenData{
 			SessionID: sessionId,
 		},

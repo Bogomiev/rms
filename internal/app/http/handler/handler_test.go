@@ -123,3 +123,7 @@ func TestAdminMiddlewareErrors(t *testing.T) {
 func (s serviceStub) UserTokenValid(ctx context.Context, _ string) (bool, error) {
 	return true, s.call(ctx)
 }
+
+func (s serviceStub) ValidateAccess(ctx context.Context, _ *token.UserClaims) error {
+	return s.call(ctx)
+}
