@@ -253,4 +253,4 @@ fi
 
 banner "Установка завершена"
 ok "RMS доступен на http://localhost:${APP_PORT}"
-info "Полезные команды: make status · make logs · make deploy · make autodeploy"
+info "Полезные команды: make status · make logs · make deploy · make autodeploy · make branch"

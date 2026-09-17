@@ -1,10 +1,13 @@
 SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := help
-.PHONY: help menu install deploy update start stop restart build logs status check autodeploy autodeploy-off down
+.PHONY: help menu install deploy update start stop restart build logs status check autodeploy autodeploy-off down branch branch-master branch-dev
 
 CYAN  := \033[36m
 BOLD  := \033[1m
 RESET := \033[0m
+
+CURRENT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "неизвестно")
+REPO_URL       := $(shell git remote get-url origin 2>/dev/null || echo "https://github.com/Bogomiev/rms")
 
 help: ## Показать это меню команд
 	@printf "$(CYAN)$(BOLD)\n"
@@ -12,6 +15,8 @@ help: ## Показать это меню команд
 	@printf "║                RMS · Управление проектом              ║\n"
 	@printf "╚══════════════════════════════════════════════════════╝\n"
 	@printf "$(RESET)\n"
+	@printf "  Репозиторий: $(REPO_URL)\n"
+	@printf "  Текущая ветка деплоя: $(BOLD)$(CURRENT_BRANCH)$(RESET)  (cron автодеплоя следит именно за ней)\n\n"
 	@awk 'BEGIN {FS = ":.*?## "} \
 		/^##@/ { printf "$(BOLD)%s$(RESET)\n", substr($$0, 5); next } \
 		/^[a-zA-Z0-9_-]+:.*?## / { printf "  $(CYAN)%-18s$(RESET) %s\n", $$1, $$2 }' \
@@ -20,12 +25,16 @@ help: ## Показать это меню команд
 
 menu: ## Интерактивное меню (кнопки установки/деплоя/автодеплоя)
 	@printf "$(CYAN)$(BOLD)\n  RMS · Меню\n$(RESET)\n"
+	@printf "  Текущая ветка деплоя: $(BOLD)$(CURRENT_BRANCH)$(RESET)\n\n"
 	@printf "  1) Установить\n"
 	@printf "  2) Деплой (обновить и перезапустить)\n"
 	@printf "  3) Настроить автодеплой (cron, раз в час)\n"
 	@printf "  4) Отключить автодеплой\n"
 	@printf "  5) Статус контейнеров\n"
 	@printf "  6) Логи\n"
+	@printf "  7) Ветка деплоя: статус\n"
+	@printf "  8) Переключить ветку деплоя на master\n"
+	@printf "  9) Переключить ветку деплоя на dev\n"
 	@printf "  0) Выход\n\n"
 	@read -r -p "Выберите пункт: " choice; \
 	case "$$choice" in \
@@ -35,6 +44,9 @@ menu: ## Интерактивное меню (кнопки установки/д
 		4) $(MAKE) autodeploy-off ;; \
 		5) $(MAKE) status ;; \
 		6) $(MAKE) logs ;; \
+		7) $(MAKE) branch ;; \
+		8) $(MAKE) branch-master ;; \
+		9) $(MAKE) branch-dev ;; \
 		*) echo "Выход." ;; \
 	esac
 
@@ -63,6 +75,17 @@ deploy: ## Деплой: git pull, пересборка образа RMS и пе
 	@bash scripts/deploy.sh
 
 update: deploy ## Синоним для deploy
+
+##@ 🌿 Ветка деплоя (dev / master)
+
+branch: ## Показать текущую ветку деплоя и её статус относительно GitHub
+	@bash scripts/branch.sh status
+
+branch-master: ## Переключить деплой на ветку master (прод) — cron автодеплоя пойдёт за ней
+	@bash scripts/branch.sh set master
+
+branch-dev: ## Переключить деплой на ветку dev — cron автодеплоя пойдёт за ней
+	@bash scripts/branch.sh set dev
 
 ##@ Автодеплой
 
