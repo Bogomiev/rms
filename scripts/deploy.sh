@@ -53,6 +53,7 @@ if [ "$UPDATED" -eq 0 ] && [ "$FORCE" -eq 0 ]; then
 fi
 
 step "Пересборка и перезапуск контейнера RMS"
+ensure_shared_network
 compose build rms
 compose up -d rms
 

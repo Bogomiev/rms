@@ -42,6 +42,7 @@ services:
       - "host.docker.internal:host-gateway"
     networks:
       - rms-network
+      - rms-ecom-shared
     healthcheck:
       test: ["CMD", "curl", "-s", "-o", "/dev/null", "http://localhost:8082/usertokenvalid?token=healthcheck"]
       interval: 10s
@@ -52,6 +53,10 @@ services:
 networks:
   rms-network:
     driver: bridge
+  # Общая сеть с ecom_orders (только сервис rms, БД сюда не подключается).
+  # Создаётся заранее: docker network create rms-ecom-shared
+  rms-ecom-shared:
+    external: true
 
 volumes:
   rms_pgdata:

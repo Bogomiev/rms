@@ -56,7 +56,7 @@ install: ## Установить: проверить Docker, обновитьс�
 	@bash scripts/install.sh
 
 start: ## Запустить контейнеры (без пересборки)
-	@bash -c 'source scripts/lib.sh; compose up -d'
+	@bash -c 'source scripts/lib.sh; ensure_shared_network; compose up -d'
 
 stop: ## Остановить контейнеры (без удаления)
 	@bash -c 'source scripts/lib.sh; compose stop'

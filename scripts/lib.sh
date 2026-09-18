@@ -57,6 +57,19 @@ ask() {
 
 command_exists() { command -v "$1" >/dev/null 2>&1; }
 
+# --- сеть, общая с ecom_orders ------------------------------------------
+# Оба проекта — отдельные docker-compose проекты со своими bridge-сетями,
+# поэтому сервисы не видят друг друга по умолчанию. rms-ecom-shared —
+# внешняя сеть-мост между ними (только сервисы rms/app, БД сюда не входит).
+SHARED_NETWORK="rms-ecom-shared"
+
+ensure_shared_network() {
+    docker network inspect "$SHARED_NETWORK" >/dev/null 2>&1 || {
+        info "Создаю сеть $SHARED_NETWORK (для связи с ecom_orders)..."
+        docker network create "$SHARED_NETWORK" >/dev/null
+    }
+}
+
 # --- docker compose (v2 плагин или отдельный docker-compose) -----------
 compose() {
     if docker compose version >/dev/null 2>&1; then
