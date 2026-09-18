@@ -220,6 +220,9 @@ fi
 
 # 7. Разрешённые origin (app_origins) --------------------------------------------
 step "Разрешённые origin приложения (app_origins)"
+info "Публичный адрес БРАУЗЕРА клиента (его APP_ORIGIN), например https://shop.example.com — не адрес RMS."
+info "RMS_APP_ORIGINS в .env имеет приоритет над app_origins в config/local.yaml (см. internal/config/config.go)."
+info "Позже поменять можно командой: make rms-key"
 CUR_ORIGINS="$(env_get RMS_APP_ORIGINS "http://localhost:3000,http://localhost:8082")"
 APP_ORIGINS="$(ask "Список origin через запятую" "$CUR_ORIGINS")"
 env_set RMS_APP_ORIGINS "$APP_ORIGINS"

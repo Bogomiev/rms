@@ -97,7 +97,7 @@ autodeploy-off: ## Отключить автодеплой из cron
 
 ##@ Безопасность
 
-rms-key: ## Задать/обновить RMS_SIGNING_KEY (config/local.yaml и .env)
+rms-key: ## Настроить интеграцию с клиентом: RMS_SIGNING_KEY и RMS_APP_ORIGINS (config/local.yaml и .env)
 	@bash scripts/rms-key.sh
 
 ##@ Диагностика

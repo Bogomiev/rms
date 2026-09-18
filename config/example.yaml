@@ -35,6 +35,11 @@ first_admin_pwd: ""
 
 # Browser origin, also configured as APP_ORIGIN in Next.js (HTTPS in production).
 # Exact allowed application origins; RMS_APP_ORIGINS accepts a comma-separated list.
+# NOTE: docker-compose.yml always sets the RMS_APP_ORIGINS env var (with a
+# localhost default), and it takes priority over this list (see env-var
+# override in internal/config/config.go). Editing this file alone has no
+# effect when running in Docker — use `make rms-key` to update RMS_APP_ORIGINS
+# in .env instead, this list is only a fallback for CONFIG_PATH without Docker.
 app_origins:
   - http://localhost:3000
   - http://localhost:8082
