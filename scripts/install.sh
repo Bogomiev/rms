@@ -242,8 +242,6 @@ if [ "$DB_MODE" = "own" ]; then
     fi
 fi
 
-ensure_shared_network
-
 info "Собираю и запускаю образ RMS..."
 compose up -d --build rms
 

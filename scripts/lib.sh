@@ -64,14 +64,20 @@ command_exists() { command -v "$1" >/dev/null 2>&1; }
 SHARED_NETWORK="rms-ecom-shared"
 
 ensure_shared_network() {
+    docker network inspect "$SHARED_NETWORK" >/dev/null 2>&1 && return 0
+    docker network create "$SHARED_NETWORK" >/dev/null 2>&1 || true
     docker network inspect "$SHARED_NETWORK" >/dev/null 2>&1 || {
-        info "Создаю сеть $SHARED_NETWORK (для связи с ecom_orders)..."
-        docker network create "$SHARED_NETWORK" >/dev/null
+        err "Не удалось создать сеть $SHARED_NETWORK (docker network create). Проверьте права docker-группы."
+        exit 1
     }
 }
 
 # --- docker compose (v2 плагин или отдельный docker-compose) -----------
+# ensure_shared_network вызывается на каждый compose-вызов (не только up),
+# т.к. docker-compose.yml объявляет rms-ecom-shared как external: true —
+# любая команда (build/up/restart/...) упадёт, если сети ещё нет.
 compose() {
+    ensure_shared_network
     if docker compose version >/dev/null 2>&1; then
         docker compose --env-file "$ENV_FILE" "$@"
     elif command_exists docker-compose; then
