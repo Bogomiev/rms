@@ -1,6 +1,6 @@
 SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := help
-.PHONY: help menu install deploy update start stop restart build logs status check autodeploy autodeploy-off down branch branch-master branch-dev
+.PHONY: help menu install deploy update start stop restart build logs status check autodeploy autodeploy-off down branch branch-master branch-dev rms-key
 
 CYAN  := \033[36m
 BOLD  := \033[1m
@@ -94,6 +94,11 @@ autodeploy: ## Настроить автодеплой из git через cron 
 
 autodeploy-off: ## Отключить автодеплой из cron
 	@bash scripts/autodeploy.sh off
+
+##@ Безопасность
+
+rms-key: ## Задать/обновить RMS_SIGNING_KEY (config/local.yaml и .env)
+	@bash scripts/rms-key.sh
 
 ##@ Диагностика
 

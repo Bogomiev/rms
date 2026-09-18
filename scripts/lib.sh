@@ -126,15 +126,20 @@ yaml_set_nested() {
 
 yaml_set_root() {
     # yaml_set_root ключ значение_в_кавычках_если_нужно
-    local key="$1" value="$2" file="$CONFIG_FILE" tmp
+    # Если ключа нет в файле — строка дописывается в конец.
+    local key="$1" value="$2" file="$CONFIG_FILE" tmp found=0
     tmp="$(mktemp)"
     while IFS= read -r line || [ -n "$line" ]; do
         if [[ "$line" =~ ^${key}: ]]; then
             printf '%s: %s\n' "$key" "$value" >> "$tmp"
+            found=1
         else
             printf '%s\n' "$line" >> "$tmp"
         fi
     done < "$file"
+    if [ "$found" -eq 0 ]; then
+        printf '%s: %s\n' "$key" "$value" >> "$tmp"
+    fi
     mv "$tmp" "$file"
 }
 
