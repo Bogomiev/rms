@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
-# Настройка автодеплоя через cron: обновление из git и перезапуск раз в час.
-# Использование: scripts/autodeploy.sh on|off
+# Настройка автодеплоя через cron: обновление из git и перезапуск с заданным
+# пользователем интервалом. Использование: scripts/autodeploy.sh on|off
+# Интервал (в минутах) хранится в .env (AUTODEPLOY_INTERVAL_MIN), чтобы при
+# повторном запуске 'make autodeploy' можно было просто подтвердить его Enter'ом.
 
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 cd "$ROOT_DIR"
 
 ACTION="${1:-on}"
 MARKER="# rms-autodeploy"
-CRON_LINE="0 * * * * cd $ROOT_DIR && $ROOT_DIR/scripts/deploy.sh >> $DEPLOY_LOG 2>&1 $MARKER"
+CRON_SCHEDULE_SCRIPT="$(dirname "${BASH_SOURCE[0]}")/cron-schedule.sh"
+AUTODEPLOY_INTERVAL_DEFAULT=60
 
 remove_existing() {
     crontab -l 2>/dev/null | grep -vF "$MARKER" || true
@@ -47,13 +50,29 @@ else
     exit 1
 fi
 
-step "Установка задания в crontab (раз в час)"
+step "Интервал проверки GitHub"
+CURRENT_MIN="$(env_get AUTODEPLOY_INTERVAL_MIN "$AUTODEPLOY_INTERVAL_DEFAULT")"
+while true; do
+    MIN="$(ask "Интервал проверки GitHub, в минутах (<60 — каждые N минут; кратно 60 — каждые N/60 часов)" "$CURRENT_MIN")"
+    if SCHEDULE="$("$CRON_SCHEDULE_SCRIPT" "$MIN" 2>&1)"; then
+        break
+    fi
+    warn "$SCHEDULE"
+done
+env_set AUTODEPLOY_INTERVAL_MIN "$MIN"
+
+step "Установка задания в crontab (каждые $MIN мин)"
+# $SCHEDULE — это "минута час" (2 поля); cron ждёт ровно 5 полей времени
+# (минута час день-месяца месяц день-недели) перед командой — не забыть
+# все 3 оставшихся "*", иначе crontab откажет с "bad day-of-week".
+CRON_LINE="$SCHEDULE * * * cd $ROOT_DIR && $ROOT_DIR/scripts/deploy.sh >> $DEPLOY_LOG 2>&1 $MARKER — интервал: ${MIN} мин"
 NEW_CRON="$(remove_existing)"
 {
     [ -n "$NEW_CRON" ] && printf '%s\n' "$NEW_CRON"
     printf '%s\n' "$CRON_LINE"
 } | crontab -
 
-ok "Автодеплой настроен: обновление из git и перезапуск контейнера RMS каждый час."
+ok "Автодеплой настроен: обновление из git и перезапуск контейнера RMS каждые $MIN мин."
 info "Лог автодеплоя: $DEPLOY_LOG"
+info "Изменить интервал позже: make autodeploy (спросит заново, текущее значение — по умолчанию)"
 info "Отключить: make autodeploy-off"
