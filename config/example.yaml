@@ -22,9 +22,21 @@ db:
 token_TTL: 15m
 refresh_token_TTL: 2160h # 90 days
 
+onec:
+  base_url: http://dev.1c.ikorniysrv.ru:85/eshop/hs/PAPI/
+  timeout: 30s
+
 scheduler:
   timezone: Asia/Vladivostok
   jobs:
+    goods_sync:
+      enabled: true
+      schedule: "0 8-19 * * *"
+      timeout: 5m
+    store_sync:
+      enabled: true
+      schedule: "0 8-19 * * *"
+      timeout: 5m
     session_cleanup:
       enabled: true
       schedule: "@every 1m"

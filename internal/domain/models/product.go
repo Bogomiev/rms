@@ -22,5 +22,5 @@ type Product struct {
 	MarkingType   string        `json:"markingType" db:"marking_type"`
 	IsWeight      bool          `json:"isWeight" db:"is_weight"`
 	IsThermalMode bool          `json:"isThermalMode" db:"is_thermal_mode"`
-	Barcodes      []BarcodeInfo `json:"barcodes" db:"barcodes"`
+	Barcodes      []BarcodeInfo `json:"barcodes" db:"-"`
 }

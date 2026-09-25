@@ -10,6 +10,7 @@ import (
 )
 
 type ProductStorage interface {
+	UpsertProducts(context.Context, []models.Product) error
 	Products(context.Context) ([]models.Product, error)
 	GetProduct(context.Context, uuid.UUID) (*models.Product, error)
 	AddProduct(context.Context, *models.Product) (*models.Product, error)
@@ -45,4 +46,14 @@ func (s *ProductService) UpdateProduct(ctx context.Context, v *models.Product) (
 }
 func (s *ProductService) Products(ctx context.Context) ([]models.Product, error) {
 	return s.storage.Products(ctx)
+}
+
+// UpsertProducts saves a batch received from 1C.
+func (s *ProductService) UpsertProducts(ctx context.Context, products []models.Product) error {
+	for i, v := range products {
+		if v.ID == uuid.Nil || utf8.RuneCountInString(v.Code) > 11 || utf8.RuneCountInString(v.Name) > 100 {
+			return fmt.Errorf("invalid product at index %d", i)
+		}
+	}
+	return s.storage.UpsertProducts(ctx, products)
 }

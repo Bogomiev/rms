@@ -11,6 +11,7 @@ import (
 	"rms/internal/config"
 	"rms/internal/scheduler"
 	"rms/internal/services/auth"
+	"rms/internal/services/onec"
 	"rms/internal/services/product"
 	"rms/internal/services/store"
 	"rms/internal/services/user"
@@ -41,10 +42,16 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, error)
 		TokenTTL: cfg.TokenTTL, RefreshTokenTTL: cfg.RefreshTokenTTL, MaxLoginAttempts: cfg.MaxLoginAttempts, LoginBlockDuration: cfg.LoginBlockDuration,
 	}, auth.Dependencies{Logger: log, Users: db, Sessions: db, Tokens: tokens})
 	userService := user.New(log, db)
+	storeService := store.New(log, db)
+	productService := product.New(log, db)
+	oneCService, err := onec.New(cfg.OneC, storeService, productService)
+	if err != nil {
+		return nil, errors.Join(err, db.Stop())
+	}
 	server := httpapp.New(httpapp.Config{
 		TokenTTL: cfg.TokenTTL, RefreshTokenTTL: cfg.RefreshTokenTTL, AppOrigins: cfg.AllowedAppOrigins(), Port: cfg.Port, Timeout: cfg.Timeout, IdleTimeout: cfg.IdleTimeout,
-	}, httpapp.Dependencies{Logger: log, Auth: authService, Users: userService, Tokens: tokens, Products: product.New(log, db), Stores: store.New(log, db)})
-	jobs, err := scheduler.New(ctx, log, cfg.Scheduler, map[string]scheduler.Job{"session_cleanup": sessionCleanupJob(log, db)})
+	}, httpapp.Dependencies{Logger: log, Auth: authService, Users: userService, Tokens: tokens, Products: productService, Stores: storeService})
+	jobs, err := newScheduler(ctx, log, cfg.Scheduler, db, oneCService)
 	if err != nil {
 		return nil, errors.Join(err, db.Stop())
 	}

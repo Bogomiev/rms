@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"os"
 	"rms/internal/scheduler"
+	"rms/internal/services/onec"
 	"strings"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 )
 
 type Config struct {
+	OneC               onec.Config      `yaml:"onec"`
 	AppOrigins         []string         `yaml:"app_origins" env:"RMS_APP_ORIGINS" env-separator:","`
 	AppOrigin          string           `yaml:"app_origin" env:"RMS_APP_ORIGIN"`
 	MaxLoginAttempts   int              `yaml:"max_login_attempts" env:"RMS_MAX_LOGIN_ATTEMPTS" env-default:"5"`
@@ -109,6 +111,9 @@ func (c Config) Validate() error {
 		return fmt.Errorf("refresh token TTL must exceed access token TTL")
 	}
 	if err := c.Scheduler.Validate(); err != nil {
+		return err
+	}
+	if err := c.OneC.Validate(); err != nil {
 		return err
 	}
 	return c.Db.Validate()
