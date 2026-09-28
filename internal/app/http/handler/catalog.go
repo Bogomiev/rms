@@ -4,13 +4,23 @@ import (
 	"github.com/go-chi/render"
 	"github.com/google/uuid"
 	"net/http"
+	"rms/internal/domain/models"
 )
 
 func (h *Handler) Products(w http.ResponseWriter, r *http.Request) {
-	data, err := h.productService.Products(r.Context())
+	f, ok := productFilter(w, r)
+	if !ok {
+		return
+	}
+	data, err := h.productService.SearchProducts(r.Context(), f)
 	if err != nil {
 		writeServiceError(w, r, err)
 		return
+	}
+	for i := range data {
+		if data[i].Images == nil {
+			data[i].Images = []models.ProductImage{}
+		}
 	}
 	render.JSON(w, r, data)
 }

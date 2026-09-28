@@ -17,7 +17,42 @@ type ProductStorage interface {
 	UpdateProduct(context.Context, *models.Product) (*models.Product, error)
 	DeleteProduct(context.Context, uuid.UUID) error
 }
-type ProductService struct{ storage ProductStorage }
+type MarketplaceService interface {
+	MarketplaceData(context.Context) (models.MarketplaceResponse, error)
+}
+type ReceiptService interface {
+	Receipts(context.Context, uuid.UUID, []uuid.UUID) ([]models.Receipt, error)
+}
+
+type InfoStorage interface {
+	SearchProducts(context.Context, models.ProductFilter, int) ([]models.Product, error)
+	ProductValues(context.Context, uuid.UUID, []uuid.UUID, []uuid.UUID, string) (map[uuid.UUID]models.ProductValues, error)
+}
+type ProductService struct {
+	storage      ProductStorage
+	info         InfoStorage
+	marketplaces MarketplaceService
+	receipts     ReceiptService
+	timezone     string
+}
+
+func (s *ProductService) ConfigureReceipts(receipts ReceiptService) { s.receipts = receipts }
+
+func (s *ProductService) Receipts(ctx context.Context, store uuid.UUID, products []uuid.UUID) ([]models.Receipt, error) {
+	if s.receipts == nil {
+		return nil, fmt.Errorf("receipts service not configured")
+	}
+	return s.receipts.Receipts(ctx, store, products)
+}
+
+func (s *ProductService) ConfigureInfo(db InfoStorage, m MarketplaceService, timezone string) {
+	s.info = db
+	s.marketplaces = m
+	s.timezone = timezone
+}
+func (s *ProductService) SearchProducts(ctx context.Context, f models.ProductFilter) ([]models.Product, error) {
+	return s.info.SearchProducts(ctx, f, 0)
+}
 
 func New(_ *slog.Logger, s ProductStorage) *ProductService { return &ProductService{storage: s} }
 func (s *ProductService) GetProduct(ctx context.Context, id uuid.UUID) (*models.Product, error) {

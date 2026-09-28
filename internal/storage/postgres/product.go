@@ -13,7 +13,7 @@ import (
 	"strings"
 )
 
-const productColumns = "id,code,name,parent_id,marked,marking_type,is_weight,is_thermal_mode,created_at,updated_at"
+const productColumns = "id,code,name,parent_id,marked,marking_type,is_weight,is_thermal_mode,created_at,updated_at,images"
 
 // Aggregate child rows in the same statement to read a consistent product snapshot.
 const productReadColumns = productColumns + `,COALESCE((SELECT jsonb_agg(
@@ -22,12 +22,18 @@ const productReadColumns = productColumns + `,COALESCE((SELECT jsonb_agg(
 
 func scanProduct(row interface{ Scan(...any) error }) (*models.Product, error) {
 	var v models.Product
-	var barcodes []byte
-	if err := row.Scan(&v.ID, &v.Code, &v.Name, &v.ParentID, &v.Marked, &v.MarkingType, &v.IsWeight, &v.IsThermalMode, &v.CreatedAt, &v.UpdatedAt, &barcodes); err != nil {
+	var barcodes, images []byte
+	if err := row.Scan(&v.ID, &v.Code, &v.Name, &v.ParentID, &v.Marked, &v.MarkingType, &v.IsWeight, &v.IsThermalMode, &v.CreatedAt, &v.UpdatedAt, &images, &barcodes); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, storage.ErrNotFound
 		}
 		return nil, err
+	}
+	if err := json.Unmarshal(images, &v.Images); err != nil {
+		return nil, err
+	}
+	if v.Images == nil {
+		v.Images = []models.ProductImage{}
 	}
 	if err := json.Unmarshal(barcodes, &v.Barcodes); err != nil {
 		return nil, err
@@ -53,11 +59,15 @@ func (s *Storage) writeProduct(ctx context.Context, v *models.Product, update bo
 		return nil, err
 	}
 	defer tx.Rollback()
-	query := `INSERT INTO products (id,code,name,parent_id,marked,marking_type,is_weight,is_thermal_mode) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`
-	if update {
-		query = `UPDATE products SET code=$2,name=$3,parent_id=$4,marked=$5,marking_type=$6,is_weight=$7,is_thermal_mode=$8,updated_at=NOW() WHERE id=$1`
+	images, err := productImages(v.Images)
+	if err != nil {
+		return nil, err
 	}
-	result, err := tx.ExecContext(ctx, query, v.ID, v.Code, v.Name, v.ParentID, v.Marked, v.MarkingType, v.IsWeight, v.IsThermalMode)
+	query := `INSERT INTO products (id,code,name,parent_id,marked,marking_type,is_weight,is_thermal_mode,images) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`
+	if update {
+		query = `UPDATE products SET code=$2,name=$3,parent_id=$4,marked=$5,marking_type=$6,is_weight=$7,is_thermal_mode=$8,images=$9,updated_at=NOW() WHERE id=$1`
+	}
+	result, err := tx.ExecContext(ctx, query, v.ID, v.Code, v.Name, v.ParentID, v.Marked, v.MarkingType, v.IsWeight, v.IsThermalMode, images)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +92,28 @@ func (s *Storage) writeProduct(ctx context.Context, v *models.Product, update bo
 }
 
 func (s *Storage) Products(ctx context.Context) ([]models.Product, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT "+productReadColumns+" FROM products ORDER BY id")
+	return s.SearchProducts(ctx, models.ProductFilter{}, 0)
+}
+func (s *Storage) SearchProducts(ctx context.Context, f models.ProductFilter, limit int) ([]models.Product, error) {
+	query := "SELECT " + productReadColumns + " FROM products"
+	args := []any{}
+	switch {
+	case f.ID != nil:
+		query += " WHERE id=$1"
+		args = append(args, *f.ID)
+	case f.Code != "":
+		query += " WHERE code=$1"
+		args = append(args, f.Code)
+	case f.Name != "":
+		query += " WHERE name ILIKE $1"
+		args = append(args, "%"+strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(f.Name)+"%")
+	}
+	query += " ORDER BY id"
+	if limit > 0 {
+		args = append(args, limit)
+		query += fmt.Sprintf(" LIMIT $%d", len(args))
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -122,11 +153,15 @@ func (s *Storage) UpsertProducts(ctx context.Context, products []models.Product)
 		return nil
 	}
 	values := make([]string, 0, len(products))
-	args := make([]any, 0, len(products)*7)
+	args := make([]any, 0, len(products)*8)
 	for _, v := range products {
+		images, err := productImages(v.Images)
+		if err != nil {
+			return err
+		}
 		n := len(args)
-		values = append(values, fmt.Sprintf("($%d,$%d,$%d,$%d,$%d,$%d,$%d)", n+1, n+2, n+3, n+4, n+5, n+6, n+7))
-		args = append(args, v.ID, v.Code, v.Name, uuid.Nil, v.MarkingType, v.IsWeight, v.IsThermalMode)
+		values = append(values, fmt.Sprintf("($%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d)", n+1, n+2, n+3, n+4, n+5, n+6, n+7, n+8))
+		args = append(args, v.ID, v.Code, v.Name, uuid.Nil, v.MarkingType, v.IsWeight, v.IsThermalMode, images)
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -134,11 +169,11 @@ func (s *Storage) UpsertProducts(ctx context.Context, products []models.Product)
 	}
 	defer tx.Rollback()
 	_, err = tx.ExecContext(ctx, `INSERT INTO products
- (id,code,name,parent_id,marking_type,is_weight,is_thermal_mode)
+ (id,code,name,parent_id,marking_type,is_weight,is_thermal_mode,images)
  VALUES `+strings.Join(values, ",")+`
  ON CONFLICT (id) DO UPDATE SET
  code=EXCLUDED.code,name=EXCLUDED.name,marking_type=EXCLUDED.marking_type,
- is_weight=EXCLUDED.is_weight,is_thermal_mode=EXCLUDED.is_thermal_mode,
+ is_weight=EXCLUDED.is_weight,is_thermal_mode=EXCLUDED.is_thermal_mode,images=EXCLUDED.images,
  updated_at=NOW()`, args...)
 	if err != nil {
 		return err
@@ -182,4 +217,12 @@ func replaceProductBarcodes(ctx context.Context, tx *sql.Tx, products []models.P
 		}
 	}
 	return flush()
+}
+
+func productImages(images []models.ProductImage) (string, error) {
+	if images == nil {
+		images = []models.ProductImage{}
+	}
+	b, err := json.Marshal(images)
+	return string(b), err
 }

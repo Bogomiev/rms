@@ -44,10 +44,11 @@ type Products interface {
 }
 
 type Service struct {
-	baseURL  string
-	client   *http.Client
-	stores   Stores
-	products Products
+	inventory Inventory
+	baseURL   string
+	client    *http.Client
+	stores    Stores
+	products  Products
 }
 
 func New(cfg Config, stores Stores, products Products) (*Service, error) {

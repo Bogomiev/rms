@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"net/http/httptest"
 	"rms/internal/domain/models"
+	"strings"
 	"testing"
 )
 
@@ -21,8 +22,8 @@ func (s *catalogStub) UserTokenValid(_ context.Context, value string) (bool, err
 	s.received = value
 	return s.valid, s.err
 }
-func (s *catalogStub) Products(context.Context) ([]models.Product, error) {
-	return []models.Product{{ID: uuid.MustParse("00000000-0000-0000-0000-000000000001"), Code: "001", Name: "Product", MarkingType: "none", Barcodes: []models.BarcodeInfo{{Barcode: "123", Unit: "pc", Ratio: 1, IsBase: true}}}}, s.err
+func (s *catalogStub) SearchProducts(context.Context, models.ProductFilter) ([]models.Product, error) {
+	return []models.Product{{ID: uuid.MustParse("00000000-0000-0000-0000-000000000001"), Code: "001", Name: "Product", MarkingType: "none", Images: []models.ProductImage{{URL: "https://example.org/image.jpg", Hash: "abc"}}, Barcodes: []models.BarcodeInfo{{Barcode: "123", Unit: "pc", Ratio: 1, IsBase: true}}}}, s.err
 }
 func (s *catalogStub) Stores(context.Context) (models.StoresResponse, error) {
 	return models.StoresResponse{Page: 1, PerPage: 1, TotalPages: 1, TotalItems: 1, Items: []models.Store{{ID: uuid.MustParse("00000000-0000-0000-0000-000000000002"), Code: "001", Name: "Store", Address: "address"}}}, s.err
@@ -32,7 +33,7 @@ func TestCatalogResponses(t *testing.T) {
 	h := NewHandler(nil, s)
 	h.Configure(s, s, 0, 0)
 	for _, tc := range []struct{ route, want string }{
-		{"products", `[{"uid":"00000000-0000-0000-0000-000000000001","parent_id":"00000000-0000-0000-0000-000000000000","marked":false,"code":"001","name":"Product","markingType":"none","isWeight":false,"isThermalMode":false,"barcodes":[{"barcode":"123","unit":"pc","ratio":1,"isBase":true}]}]`},
+		{"products", `[{"uid":"00000000-0000-0000-0000-000000000001","parent_id":"00000000-0000-0000-0000-000000000000","marked":false,"code":"001","name":"Product","markingType":"none","isWeight":false,"isThermalMode":false,"images":[{"url":"https://example.org/image.jpg","hash":"abc"}],"barcodes":[{"barcode":"123","unit":"pc","ratio":1,"isBase":true}]}]`},
 		{"stores", `{"page":1,"perPage":1,"totalPages":1,"totalItems":1,"items":[{"id":"00000000-0000-0000-0000-000000000002","code":"001","name":"Store","uid_1c":"00000000-0000-0000-0000-000000000002","address":"address"}]}`},
 	} {
 		w := httptest.NewRecorder()
@@ -41,6 +42,12 @@ func TestCatalogResponses(t *testing.T) {
 			h.Products(w, r)
 		} else {
 			h.Stores(w, r)
+		}
+		if tc.route == "products" {
+			body := w.Body.String()
+			if strings.Index(body, `"images":`) <= strings.Index(body, `"barcodes":`) {
+				t.Fatalf("images must follow barcodes: %s", body)
+			}
 		}
 		var got, want any
 		if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {

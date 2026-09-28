@@ -31,7 +31,7 @@ func TestSyncGoodsBatches(t *testing.T) {
 	for _, count := range []int{0, 1, 250, 251, 501} {
 		goods := make([]models.Product, count)
 		for i := range goods {
-			goods[i] = models.Product{ID: uuid.New(), Code: "ЦБ-00003573", Name: "Кольца кальмара", MarkingType: "БезОсобенностейУчета", IsWeight: true, IsThermalMode: true, Barcodes: []models.BarcodeInfo{{Barcode: "4602009936098", Unit: "шт", Ratio: 6}}}
+			goods[i] = models.Product{ID: uuid.New(), Code: "ЦБ-00003573", Name: "Кольца кальмара", MarkingType: "БезОсобенностейУчета", IsWeight: true, IsThermalMode: true, Images: []models.ProductImage{{URL: "https://example.org/image.jpg", Hash: "abc"}}, Barcodes: []models.BarcodeInfo{{Barcode: "4602009936098", Unit: "шт", Ratio: 6}}}
 		}
 		body, _ := json.Marshal(goods)
 		for _, failAt := range []int{0, 2} {

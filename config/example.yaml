@@ -29,6 +29,18 @@ onec:
 scheduler:
   timezone: Asia/Vladivostok
   jobs:
+    prices_sync:
+      enabled: true
+      schedule: "0 8-22 * * *"
+      timeout: 15m
+    stocks_sync_close:
+      enabled: true
+      schedule: "0 22 * * *"
+      timeout: 15m
+    stocks_sync:
+      enabled: true
+      schedule: "*/20 8-21 * * *"
+      timeout: 15m
     goods_sync:
       enabled: true
       schedule: "0 8-19 * * *"

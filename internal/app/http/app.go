@@ -33,12 +33,16 @@ type Config struct {
 }
 
 type Dependencies struct {
-	Logger   *slog.Logger
-	Auth     hdlr.AuthService
-	Users    hdlr.UserService
-	Tokens   hdlr.TokenVerifier
-	Products hdlr.ProductService
-	Stores   hdlr.StoreService
+	Prices      hdlr.PriceService
+	Stocks      hdlr.StockService
+	ProductInfo hdlr.ProductInfoService
+	Marketplace hdlr.MarketplaceService
+	Logger      *slog.Logger
+	Auth        hdlr.AuthService
+	Users       hdlr.UserService
+	Tokens      hdlr.TokenVerifier
+	Products    hdlr.ProductService
+	Stores      hdlr.StoreService
 }
 
 func New(cfg Config, deps Dependencies) *App {
@@ -46,11 +50,18 @@ func New(cfg Config, deps Dependencies) *App {
 	initMiddlewares(router, deps.Logger)
 	handler := hdlr.NewHandler(deps.Auth, deps.Users)
 	handler.Configure(deps.Products, deps.Stores, cfg.TokenTTL, cfg.RefreshTokenTTL)
+	handler.ConfigurePriceStock(deps.Prices, deps.Stocks)
+	handler.ConfigureProductInfo(deps.ProductInfo, deps.Marketplace)
 	tokenMaker := deps.Tokens
 	handler.ConfigureSecurity(tokenMaker)
+	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/MarketplaceData", handler.MarketplaceData)
+	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/product_info", handler.ProductInfo)
 	router.Get("/usertokenvalid", handler.UserTokenValid)
 	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/products", handler.Products)
 	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/stores", handler.Stores)
+
+	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/prices", handler.Prices)
+	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/stocks/{store_id}", handler.Stocks)
 
 	router.Route("/auth", func(r chi.Router) {
 		r.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/session", handler.Session)

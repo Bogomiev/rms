@@ -6,6 +6,7 @@ import (
 )
 
 type Store struct {
+	PriceType uuid.UUID `json:"price_type" db:"price_type"`
 	CreatedAt time.Time `json:"-" db:"created_at"`
 	UpdatedAt time.Time `json:"-" db:"updated_at"`
 	ID        uuid.UUID `json:"id" db:"id"`

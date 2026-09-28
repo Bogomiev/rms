@@ -25,6 +25,10 @@ type TokenVerifier interface {
 }
 
 type Handler struct {
+	prices         PriceService
+	stocks         StockService
+	marketplace    MarketplaceService
+	productInfo    ProductInfoService
 	tokens         TokenVerifier
 	authService    AuthService
 	userService    UserService
@@ -39,7 +43,7 @@ func NewHandler(auth AuthService, user UserService) *Handler {
 }
 
 type ProductService interface {
-	Products(context.Context) ([]models.Product, error)
+	SearchProducts(context.Context, models.ProductFilter) ([]models.Product, error)
 }
 type StoreService interface {
 	Stores(context.Context) (models.StoresResponse, error)
