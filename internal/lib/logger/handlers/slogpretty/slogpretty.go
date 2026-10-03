@@ -49,13 +49,13 @@ func (h *PrettyHandler) Handle(_ context.Context, r slog.Record) error {
 	fields := make(map[string]interface{}, r.NumAttrs())
 
 	r.Attrs(func(a slog.Attr) bool {
-		fields[a.Key] = a.Value.Any()
+		fields[a.Key] = attrValue(a.Value)
 
 		return true
 	})
 
 	for _, a := range h.attrs {
-		fields[a.Key] = a.Value.Any()
+		fields[a.Key] = attrValue(a.Value)
 	}
 
 	var b []byte
@@ -68,7 +68,7 @@ func (h *PrettyHandler) Handle(_ context.Context, r slog.Record) error {
 		}
 	}
 
-	timeStr := r.Time.Format("[15:05:05.000]")
+	timeStr := r.Time.Format("[15:04:05.000]")
 	msg := color.CyanString(r.Message)
 
 	h.l.Println(
@@ -79,6 +79,14 @@ func (h *PrettyHandler) Handle(_ context.Context, r slog.Record) error {
 	)
 
 	return nil
+}
+
+func attrValue(value slog.Value) any {
+	value = value.Resolve()
+	if err, ok := value.Any().(error); ok {
+		return err.Error()
+	}
+	return value.Any()
 }
 
 func (h *PrettyHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
