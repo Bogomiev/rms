@@ -19,6 +19,14 @@ type Inventory interface {
 
 func (s *Service) ConfigureInventory(inventory Inventory) { s.inventory = inventory }
 
+type storeStocks struct {
+	StoreID uuid.UUID `json:"store_id"`
+	Stocks  []struct {
+		ProductID uuid.UUID   `json:"id"`
+		Stock     json.Number `json:"stock"`
+	} `json:"stocks"`
+}
+
 // Validate every page before replacing any data. Inconsistent pagination fails closed.
 func fetchPages[T any](ctx context.Context, s *Service, method string) ([]T, error) {
 	items := []T{}
@@ -92,20 +100,27 @@ func (s *Service) SyncStocks(ctx context.Context) error {
 	if s.inventory == nil {
 		return fmt.Errorf("inventory storage not configured")
 	}
-	items, err := fetchPages[models.Stock](ctx, s, "GetStocks")
+	stores, err := fetchPages[storeStocks](ctx, s, "GetStocks")
 	if err != nil {
 		return err
 	}
 	seen := map[[2]uuid.UUID]bool{}
-	for i, v := range items {
-		if v.StoreID == uuid.Nil || v.ProductID == uuid.Nil || v.Stock == "" {
-			return fmt.Errorf("invalid stock at index %d", i)
+	items := []models.Stock{}
+	for i, store := range stores {
+		if store.StoreID == uuid.Nil || store.Stocks == nil {
+			return fmt.Errorf("invalid stock store at index %d: store_id or stocks is missing", i)
 		}
-		key := [2]uuid.UUID{v.StoreID, v.ProductID}
-		if seen[key] {
-			return fmt.Errorf("duplicate stock at index %d", i)
+		for j, stock := range store.Stocks {
+			if stock.ProductID == uuid.Nil || stock.Stock == "" {
+				return fmt.Errorf("invalid stock at store index %d, stock index %d", i, j)
+			}
+			key := [2]uuid.UUID{store.StoreID, stock.ProductID}
+			if seen[key] {
+				return fmt.Errorf("duplicate stock at store index %d, stock index %d", i, j)
+			}
+			seen[key] = true
+			items = append(items, models.Stock{StoreID: store.StoreID, ProductID: stock.ProductID, Stock: stock.Stock})
 		}
-		seen[key] = true
 	}
 	return s.inventory.ReplaceStocks(ctx, items)
 }

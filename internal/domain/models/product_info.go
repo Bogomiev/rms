@@ -23,5 +23,25 @@ type ProductValues struct {
 type ProductInfo struct {
 	Product
 	ProductValues
-	Receipts []Receipt `json:"receipts"`
+	SoldYesterdayQuantity     json.Number `json:"sold_yesterday_quantity"`
+	SoldWeekQuantity          json.Number `json:"sold_week_quantity"`
+	ReceiptsYesterdayQuantity json.Number `json:"receipts_yesterday_quantity"`
+	ReceiptsWeekQuantity      json.Number `json:"receipts_week_quantity"`
+	StockDays                 int64       `json:"stock_days"`
+	Receipts                  []Receipt   `json:"receipts"`
+}
+
+// OneCProductInfo contains live product data returned by GetProductInfo.
+type OneCProductInfo struct {
+	Receipts []Receipt      `json:"receipts"`
+	Sales    []ProductSales `json:"sales"`
+}
+
+type ProductSales struct {
+	StoreID                   uuid.UUID   `json:"store_id"`
+	ProductID                 uuid.UUID   `json:"product_id"`
+	SoldYesterdayQuantity     json.Number `json:"sold_yesterday_quantity"`
+	SoldWeekQuantity          json.Number `json:"sold_week_quantity"`
+	ReceiptsYesterdayQuantity json.Number `json:"receipts_yesterday_quantity"`
+	ReceiptsWeekQuantity      json.Number `json:"receipts_week_quantity"`
 }

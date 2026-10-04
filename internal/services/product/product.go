@@ -20,8 +20,8 @@ type ProductStorage interface {
 type MarketplaceService interface {
 	MarketplaceData(context.Context) (models.MarketplaceResponse, error)
 }
-type ReceiptService interface {
-	Receipts(context.Context, uuid.UUID, []uuid.UUID) ([]models.Receipt, error)
+type ProductInfoSource interface {
+	GetProductInfo(context.Context, uuid.UUID, []uuid.UUID) (*models.OneCProductInfo, error)
 }
 
 type InfoStorage interface {
@@ -29,21 +29,15 @@ type InfoStorage interface {
 	ProductValues(context.Context, uuid.UUID, []uuid.UUID, []uuid.UUID, string) (map[uuid.UUID]models.ProductValues, error)
 }
 type ProductService struct {
+	logger       *slog.Logger
 	storage      ProductStorage
 	info         InfoStorage
 	marketplaces MarketplaceService
-	receipts     ReceiptService
+	onecInfo     ProductInfoSource
 	timezone     string
 }
 
-func (s *ProductService) ConfigureReceipts(receipts ReceiptService) { s.receipts = receipts }
-
-func (s *ProductService) Receipts(ctx context.Context, store uuid.UUID, products []uuid.UUID) ([]models.Receipt, error) {
-	if s.receipts == nil {
-		return nil, fmt.Errorf("receipts service not configured")
-	}
-	return s.receipts.Receipts(ctx, store, products)
-}
+func (s *ProductService) ConfigureProductInfo(source ProductInfoSource) { s.onecInfo = source }
 
 func (s *ProductService) ConfigureInfo(db InfoStorage, m MarketplaceService, timezone string) {
 	s.info = db
@@ -54,7 +48,12 @@ func (s *ProductService) SearchProducts(ctx context.Context, f models.ProductFil
 	return s.info.SearchProducts(ctx, f, 0)
 }
 
-func New(_ *slog.Logger, s ProductStorage) *ProductService { return &ProductService{storage: s} }
+func New(logger *slog.Logger, s ProductStorage) *ProductService {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &ProductService{logger: logger, storage: s}
+}
 func (s *ProductService) GetProduct(ctx context.Context, id uuid.UUID) (*models.Product, error) {
 	return s.storage.GetProduct(ctx, id)
 }

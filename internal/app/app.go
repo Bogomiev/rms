@@ -54,7 +54,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, error)
 	oneCService.ConfigureInventory(db)
 	marketplaces := marketplace.New(oneCService)
 	productService.ConfigureInfo(db, marketplaces, cfg.Scheduler.Timezone)
-	productService.ConfigureReceipts(oneCService)
+	productService.ConfigureProductInfo(oneCService)
 	server := httpapp.New(httpapp.Config{
 		TokenTTL: cfg.TokenTTL, RefreshTokenTTL: cfg.RefreshTokenTTL, AppOrigins: cfg.AllowedAppOrigins(), Port: cfg.Port, Timeout: cfg.Timeout, IdleTimeout: cfg.IdleTimeout,
 	}, httpapp.Dependencies{Logger: log, Auth: authService, Users: userService, Tokens: tokens, Products: productService, Stores: storeService, Prices: price.New(db), Stocks: stock.New(db), ProductInfo: productService, Marketplace: marketplaces})

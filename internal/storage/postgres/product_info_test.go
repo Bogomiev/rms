@@ -14,8 +14,8 @@ type infoMarketplace struct{ types []uuid.UUID }
 
 type infoReceipts struct{}
 
-func (infoReceipts) Receipts(context.Context, uuid.UUID, []uuid.UUID) ([]models.Receipt, error) {
-	return []models.Receipt{}, nil
+func (infoReceipts) GetProductInfo(context.Context, uuid.UUID, []uuid.UUID) (*models.OneCProductInfo, error) {
+	return &models.OneCProductInfo{}, nil
 }
 
 func (m infoMarketplace) MarketplaceData(context.Context) (models.MarketplaceResponse, error) {
@@ -73,7 +73,7 @@ func TestProductInfoAndSearch(t *testing.T) {
 	}
 	service := product.New(nil, s)
 	service.ConfigureInfo(s, infoMarketplace{types}, "Asia/Vladivostok")
-	service.ConfigureReceipts(infoReceipts{})
+	service.ConfigureProductInfo(infoReceipts{})
 	got, err := service.ProductInfo(ctx, store.ID, models.ProductFilter{ID: &products[0].ID})
 	if err != nil || len(got) != 1 {
 		t.Fatalf("info: %+v %v", got, err)
