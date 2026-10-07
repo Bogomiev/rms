@@ -51,7 +51,7 @@ func TestProductInfoAndSearch(t *testing.T) {
 			t.Fatalf("search %+v: %d %v", tc.f, len(got), err)
 		}
 	}
-	store := models.Store{ID: uuid.New(), PriceType: uuid.New()}
+	store := models.Store{ID: uuid.New(), PriceType: uuid.New(), PriceTypePromo: uuid.New()}
 	if _, err := s.AddStore(ctx, &store); err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestProductInfoAndSearch(t *testing.T) {
 	for i := range types {
 		types[i] = uuid.New()
 	}
-	all := append([]uuid.UUID{store.PriceType}, types...)
+	all := append([]uuid.UUID{store.PriceType, store.PriceTypePromo}, types...)
 	for i, typ := range all {
 		// Include a future price and an older price for every price type.
 		_, err := s.db.Exec(`INSERT INTO prices(period,price_type,product_id,price) VALUES
@@ -79,7 +79,7 @@ func TestProductInfoAndSearch(t *testing.T) {
 		t.Fatalf("info: %+v %v", got, err)
 	}
 	v := got[0]
-	values := []json.Number{v.Price, v.PriceEshop, v.PromoPriceEshop, v.PriceOzon, v.PromoPriceOzon, v.PriceYandexEats, v.PromoPriceYandexEats}
+	values := []json.Number{v.Price, v.PricePromo, v.PriceEshop, v.PromoPriceEshop, v.PriceOzon, v.PromoPriceOzon, v.PriceYandexEats, v.PromoPriceYandexEats}
 	for i, n := range values {
 		if n.String() != fmt.Sprint(i+10) {
 			t.Fatalf("price %d: %v", i, n)
@@ -93,7 +93,7 @@ func TestProductInfoAndSearch(t *testing.T) {
 		t.Fatalf("limit: %d %v", len(got), err)
 	}
 	got, err = service.ProductInfo(ctx, store.ID, models.ProductFilter{ID: &products[1].ID})
-	if err != nil || got[0].Price != "0" || got[0].Stock != "0" {
+	if err != nil || got[0].Price != "0" || got[0].PricePromo != "0" || got[0].Stock != "0" {
 		t.Fatalf("missing values: %+v %v", got, err)
 	}
 
@@ -105,7 +105,7 @@ func TestProductInfoAndSearch(t *testing.T) {
 	if err = json.Unmarshal(raw, &fields); err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"price", "stock", "price_eshop", "price_ozon", "price_yandex_eats", "promo_price_eshop", "promo_price_ozon", "promo_price_yandex_eats"} {
+	for _, key := range []string{"price", "price_promo", "stock", "price_eshop", "price_ozon", "price_yandex_eats", "promo_price_eshop", "promo_price_ozon", "promo_price_yandex_eats"} {
 		if string(fields[key]) != "0" {
 			t.Fatalf("%s must be numeric zero: %s", key, fields[key])
 		}
@@ -113,5 +113,86 @@ func TestProductInfoAndSearch(t *testing.T) {
 	got, err = service.ProductInfo(ctx, store.ID, models.ProductFilter{Code: "missing"})
 	if err != nil || got == nil || len(got) != 0 {
 		t.Fatalf("empty: %+v %v", got, err)
+	}
+}
+
+func TestProductPriceDates(t *testing.T) {
+	s := authTestStorage(t)
+	ctx := context.Background()
+	store := models.Store{ID: uuid.New(), PriceType: uuid.New(), PriceTypePromo: uuid.New()}
+	if _, err := s.AddStore(ctx, &store); err != nil {
+		t.Fatal(err)
+	}
+	types := make([]uuid.UUID, 6)
+	for i := range types {
+		types[i] = uuid.New()
+	}
+	const from = "2001-01-01T00:00:00.000000"
+	const to = "2998-01-01T00:00:00.000000"
+	for _, tc := range []struct {
+		name    string
+		promo   string
+		end     bool
+		missing bool
+	}{
+		{name: "active promo with nearest future zero", promo: "5.25", end: true},
+		{name: "active promo without end", promo: "5.25"},
+		{name: "zero promo", promo: "0", end: true},
+		{name: "negative promo", promo: "-1", end: true},
+		{name: "missing prices", missing: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			id := uuid.New()
+			if !tc.missing {
+				_, err := s.db.Exec(`INSERT INTO prices(period,price_type,product_id,price) VALUES
+     ('2000-01-01',$1,$3,1),('2001-01-01',$1,$3,10),('2999-01-01',$1,$3,999),
+     ('1999-01-01',$2,$3,0),('2000-01-01',$2,$3,1),('2001-01-01',$2,$3,$4),('2997-01-01',$2,$3,99)`, store.PriceType, store.PriceTypePromo, id, tc.promo)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if tc.end {
+					_, err = s.db.Exec(`INSERT INTO prices(period,price_type,product_id,price) VALUES ('2998-01-01',$1,$2,0),('2999-01-01',$1,$2,0)`, store.PriceTypePromo, id)
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			values, err := s.ProductValues(ctx, store.ID, []uuid.UUID{id}, types, "Asia/Vladivostok")
+			if err != nil {
+				t.Fatal(err)
+			}
+			v := values[id]
+			wantFrom := !tc.missing
+			wantPromoFrom := !tc.missing && tc.promo == "5.25"
+			wantPromoTo := wantPromoFrom && tc.end
+			for _, date := range []struct {
+				name  string
+				got   *string
+				want  bool
+				value string
+			}{
+				{"price_from", v.PriceFrom, wantFrom, from},
+				{"price_promo_from", v.PricePromoFrom, wantPromoFrom, from},
+				{"price_promo_to", v.PricePromoTo, wantPromoTo, to},
+			} {
+				if (date.got != nil) != date.want || (date.got != nil && *date.got != date.value) {
+					t.Fatalf("%s: got %v, want present=%v value=%s", date.name, date.got, date.want, date.value)
+				}
+			}
+			raw, err := json.Marshal(v)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var fields map[string]json.RawMessage
+			if err := json.Unmarshal(raw, &fields); err != nil {
+				t.Fatal(err)
+			}
+			if !wantPromoFrom && string(fields["price_promo_from"]) != "null" {
+				t.Fatalf("promo from must be null: %s", raw)
+			}
+			if !wantPromoTo && string(fields["price_promo_to"]) != "null" {
+				t.Fatalf("promo to must be null: %s", raw)
+			}
+		})
 	}
 }

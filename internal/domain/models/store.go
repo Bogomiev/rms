@@ -6,13 +6,14 @@ import (
 )
 
 type Store struct {
-	PriceType uuid.UUID `json:"price_type" db:"price_type"`
-	CreatedAt time.Time `json:"-" db:"created_at"`
-	UpdatedAt time.Time `json:"-" db:"updated_at"`
-	ID        uuid.UUID `json:"id" db:"id"`
-	Code      string    `json:"code" db:"code"`
-	Name      string    `json:"name" db:"name"`
-	Address   string    `json:"address" db:"address"`
+	PriceTypePromo uuid.UUID `json:"price_type_promo" db:"price_type_promo"`
+	PriceType      uuid.UUID `json:"price_type" db:"price_type"`
+	CreatedAt      time.Time `json:"-" db:"created_at"`
+	UpdatedAt      time.Time `json:"-" db:"updated_at"`
+	ID             uuid.UUID `json:"id" db:"id"`
+	Code           string    `json:"code" db:"code"`
+	Name           string    `json:"name" db:"name"`
+	Address        string    `json:"address" db:"address"`
 }
 type StoresResponse struct {
 	Page       int     `json:"page"`

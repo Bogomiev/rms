@@ -84,7 +84,7 @@ func TestCancellation(t *testing.T) {
 func TestGetStoresResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"page":1,"perPage":2,"totalPages":1,"totalItems":2,"items":[
-   {"id":"5a6bb748-bfd1-11e8-80c8-0cc47ab32259","uid_1c":"5a6bb748-bfd1-11e8-80c8-0cc47ab32259","price_type":"6c33a838-399a-11e9-8102-0cc47ab32259","code":"8031","name":"8031_Королев Горького (ИП Ефремян РБ)","address":"141080, Московская область, г.о. Королёв, г Королёв, д. 6А","pin":"8031"},
+   {"id":"5a6bb748-bfd1-11e8-80c8-0cc47ab32259","uid_1c":"5a6bb748-bfd1-11e8-80c8-0cc47ab32259","price_type":"6c33a838-399a-11e9-8102-0cc47ab32259","price_type_promo":"7c33a838-399a-11e9-8102-0cc47ab32259","code":"8031","name":"8031_Королев Горького (ИП Ефремян РБ)","address":"141080, Московская область, г.о. Королёв, г Королёв, д. 6А","pin":"8031"},
    {"id":"02b3665b-f732-11e9-80ce-0cc47ae051d5","uid_1c":"02b3665b-f732-11e9-80ce-0cc47ae051d5","code":"8071","name":"8071_Руднева (ИП Ситникова)","address":"117041, Город Москва, ул Адмирала Руднева, д. 2","pin":"8071"}
   ]}`))
 	}))
@@ -99,6 +99,9 @@ func TestGetStoresResponse(t *testing.T) {
 	}
 	if len(stores) == 2 && stores[0].PriceType.String() != "6c33a838-399a-11e9-8102-0cc47ab32259" {
 		t.Fatal("price_type lost")
+	}
+	if len(stores) == 2 && stores[0].PriceTypePromo.String() != "7c33a838-399a-11e9-8102-0cc47ab32259" {
+		t.Fatal("price_type_promo lost")
 	}
 	if len(stores) != 2 {
 		t.Fatalf("got %d stores", len(stores))

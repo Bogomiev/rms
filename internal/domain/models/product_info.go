@@ -11,6 +11,10 @@ type ProductFilter struct {
 	Name string
 }
 type ProductValues struct {
+	PriceFrom            *string     `json:"price_from"`
+	PricePromoFrom       *string     `json:"price_promo_from"`
+	PricePromoTo         *string     `json:"price_promo_to"`
+	PricePromo           json.Number `json:"price_promo"`
 	Price                json.Number `json:"price"`
 	Stock                json.Number `json:"stock"`
 	PriceEshop           json.Number `json:"price_eshop"`
