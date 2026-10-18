@@ -24,7 +24,7 @@ refresh_token_TTL: 2160h # 90 days
 
 onec:
   base_url: http://dev.1c.ikorniysrv.ru:85/eshop/hs/PAPI/
-  timeout: 30s
+  timeout: 5m
 
 scheduler:
   timezone: Asia/Vladivostok

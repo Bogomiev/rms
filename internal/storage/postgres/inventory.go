@@ -50,14 +50,17 @@ func (s *Storage) replaceSnapshot(ctx context.Context, table string, columns []s
 	return tx.Commit()
 }
 func (s *Storage) ReplacePrices(ctx context.Context, items []models.Price) error {
-	return s.replaceSnapshot(ctx, "prices", []string{"period", "price_type", "product_id", "price"}, len(items), func(i int) []any { v := items[i]; return []any{v.Period, v.PriceType, v.ProductID, v.Price.String()} })
+	return s.replaceSnapshot(ctx, "prices", []string{"period", "price_type", "product_id", "price", "doc_id"}, len(items), func(i int) []any {
+		v := items[i]
+		return []any{v.Period, v.PriceType, v.ProductID, v.Price.String(), v.DocID}
+	})
 }
 func (s *Storage) ReplaceStocks(ctx context.Context, items []models.Stock) error {
 	return s.replaceSnapshot(ctx, "stocks", []string{"product_id", "store_id", "stock"}, len(items), func(i int) []any { v := items[i]; return []any{v.ProductID, v.StoreID, v.Stock.String()} })
 }
 func (s *Storage) Prices(ctx context.Context, storeID uuid.UUID, productID *uuid.UUID) (models.Page[models.Price], error) {
 	args := []any{storeID}
-	query := `SELECT to_char(p.period,'YYYY-MM-DD"T"HH24:MI:SS.US'),p.price_type,p.product_id,p.price FROM prices p JOIN stores s ON s.price_type=p.price_type WHERE s.id=$1`
+	query := `SELECT to_char(p.period,'YYYY-MM-DD"T"HH24:MI:SS.US'),p.price_type,p.product_id,p.price,p.doc_id FROM prices p JOIN stores s ON s.price_type=p.price_type WHERE s.id=$1`
 	if productID != nil {
 		query += " AND p.product_id=$2"
 		args = append(args, *productID)
@@ -71,7 +74,7 @@ func (s *Storage) Prices(ctx context.Context, storeID uuid.UUID, productID *uuid
 	items := []models.Price{}
 	for rows.Next() {
 		var v models.Price
-		if err = rows.Scan(&v.Period, &v.PriceType, &v.ProductID, &v.Price); err != nil {
+		if err = rows.Scan(&v.Period, &v.PriceType, &v.ProductID, &v.Price, &v.DocID); err != nil {
 			return models.Page[models.Price]{}, err
 		}
 		items = append(items, v)

@@ -7,6 +7,7 @@ import (
 
 // Period is a 1C local datetime without a timezone; keep its wall-clock value.
 type Price struct {
+	DocID     uuid.UUID   `json:"doc_id"`
 	Period    string      `json:"period"`
 	PriceType uuid.UUID   `json:"price_type"`
 	ProductID uuid.UUID   `json:"product_id"`

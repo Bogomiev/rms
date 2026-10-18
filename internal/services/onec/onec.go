@@ -20,7 +20,7 @@ import (
 
 type Config struct {
 	BaseURL string        `yaml:"base_url" env:"RMS_ONEC_BASE_URL" env-default:"http://dev.1c.ikorniysrv.ru:85/eshop/hs/PAPI/"`
-	Timeout time.Duration `yaml:"timeout" env:"RMS_ONEC_TIMEOUT" env-default:"30s"`
+	Timeout time.Duration `yaml:"timeout" env:"RMS_ONEC_TIMEOUT" env-default:"5m"`
 }
 
 func (c Config) Validate() error {

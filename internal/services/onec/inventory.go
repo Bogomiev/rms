@@ -85,10 +85,10 @@ func (s *Service) SyncPrices(ctx context.Context) error {
 	seen := map[string]bool{}
 	for i, v := range items {
 		t, err := time.Parse("2006-01-02T15:04:05", v.Period)
-		if err != nil || v.PriceType == uuid.Nil || v.ProductID == uuid.Nil || v.Price == "" {
+		if err != nil || v.DocID == uuid.Nil || v.PriceType == uuid.Nil || v.ProductID == uuid.Nil || v.Price == "" {
 			return fmt.Errorf("invalid price at index %d", i)
 		}
-		key := t.Format("2006-01-02T15:04:05.999999999") + v.PriceType.String() + v.ProductID.String()
+		key := t.Format("2006-01-02T15:04:05.999999999") + v.PriceType.String() + v.ProductID.String() + v.DocID.String()
 		if seen[key] {
 			return fmt.Errorf("duplicate price at index %d", i)
 		}

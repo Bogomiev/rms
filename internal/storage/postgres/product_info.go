@@ -36,7 +36,7 @@ func (s *Storage) ProductValues(ctx context.Context, store uuid.UUID, ids, types
 		} else if i > 1 {
 			typ = fmt.Sprintf("$%d::uuid", i+2)
 		}
-		query += fmt.Sprintf(` LEFT JOIN LATERAL (SELECT price,period FROM prices WHERE product_id=wanted.id AND price_type=%s AND period <= (CURRENT_TIMESTAMP AT TIME ZONE $3) ORDER BY period DESC LIMIT 1) p%d ON true`, typ, i)
+		query += fmt.Sprintf(` LEFT JOIN LATERAL (SELECT price,period FROM prices WHERE product_id=wanted.id AND price_type=%s AND period <= (CURRENT_TIMESTAMP AT TIME ZONE $3) ORDER BY period DESC,doc_id DESC LIMIT 1) p%d ON true`, typ, i)
 	}
 	query += ` LEFT JOIN LATERAL (
  SELECT period FROM prices

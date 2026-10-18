@@ -33,6 +33,7 @@ type Config struct {
 }
 
 type Dependencies struct {
+	Discounts   hdlr.DiscountService
 	Prices      hdlr.PriceService
 	Stocks      hdlr.StockService
 	ProductInfo hdlr.ProductInfoService
@@ -51,6 +52,7 @@ func New(cfg Config, deps Dependencies) *App {
 	handler := hdlr.NewHandler(deps.Auth, deps.Users)
 	handler.Configure(deps.Products, deps.Stores, cfg.TokenTTL, cfg.RefreshTokenTTL)
 	handler.ConfigurePriceStock(deps.Prices, deps.Stocks)
+	handler.ConfigureDiscounts(deps.Discounts)
 	handler.ConfigureProductInfo(deps.ProductInfo, deps.Marketplace)
 	tokenMaker := deps.Tokens
 	handler.ConfigureSecurity(tokenMaker)
@@ -60,6 +62,7 @@ func New(cfg Config, deps Dependencies) *App {
 	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/products", handler.Products)
 	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/stores", handler.Stores)
 
+	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/discounts", handler.Discounts)
 	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/prices", handler.Prices)
 	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/stocks/{store_id}", handler.Stocks)
 

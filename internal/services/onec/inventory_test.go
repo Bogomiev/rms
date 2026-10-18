@@ -50,7 +50,7 @@ func TestInventoryPaginationAndFailure(t *testing.T) {
 				if mode == "incomplete" {
 					total = 3
 				}
-				fmt.Fprintf(w, `{"page":%s,"perPage":1,"totalPages":2,"totalItems":%d,"items":[{"period":"2025-12-30T00:00:09","price_type":"6c33a838-399a-11e9-8102-0cc47ab32259","product_id":"00000000-0000-0000-0000-00000000000%s","price":600.123456789}]}`, page, total, id)
+				fmt.Fprintf(w, `{"page":%s,"perPage":1,"totalPages":2,"totalItems":%d,"items":[{"doc_id":"11111111-1111-1111-1111-111111111111","period":"2025-12-30T00:00:09","price_type":"6c33a838-399a-11e9-8102-0cc47ab32259","product_id":"00000000-0000-0000-0000-00000000000%s","price":600.123456789}]}`, page, total, id)
 			}))
 			defer server.Close()
 			svc, err := New(Config{BaseURL: server.URL, Timeout: time.Second}, nil, nil)

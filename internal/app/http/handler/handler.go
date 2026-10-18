@@ -25,6 +25,7 @@ type TokenVerifier interface {
 }
 
 type Handler struct {
+	discounts      DiscountService
 	prices         PriceService
 	stocks         StockService
 	marketplace    MarketplaceService
