@@ -25,6 +25,7 @@ type TokenVerifier interface {
 }
 
 type Handler struct {
+	files          FileService
 	discounts      DiscountService
 	prices         PriceService
 	stocks         StockService

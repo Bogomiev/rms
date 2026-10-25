@@ -69,3 +69,10 @@ app_origins:
   - http://localhost:8082
 max_login_attempts: 5
 login_block_duration: 15m
+
+# S3 file service. Set bucket and credentials to enable storage mutations.
+s3_path: https://s3.regru.cloud/
+s3_bucket: ""
+s3_region: us-east-1
+s3_access_key: "" # or RMS_S3_ACCESS_KEY
+s3_secret_key: "" # or RMS_S3_SECRET_KEY

@@ -17,7 +17,21 @@ type tokenData struct {
 
 type loginData struct {
 	tokenData
-	User userData `json:"user"`
+	User loginUserData `json:"user"`
+}
+
+type roleData struct {
+	Role string `json:"role"`
+}
+
+type loginUserData struct {
+	userData
+	roleData
+}
+
+type refreshData struct {
+	tokenData
+	User roleData `json:"user"`
 }
 
 type errorResponse struct {
@@ -37,7 +51,7 @@ type logoutResponse struct {
 type refreshResponse struct {
 	CSRFToken string `json:"csrfToken"`
 	resp.Response
-	Data tokenData `json:"data,omitempty"`
+	Data refreshData `json:"data,omitempty"`
 }
 
 type userData struct {
@@ -133,7 +147,7 @@ func (h *Handler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	h.setTokenCookies(w, accessToken, refreshToken)
-	respRefreshOK(w, r, sessionId, claims.CSRFToken)
+	respRefreshOK(w, r, sessionId, claims.CSRFToken, claims.IsAdmin)
 }
 
 func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
@@ -201,24 +215,28 @@ func respLoginOK(w http.ResponseWriter, r *http.Request,
 			tokenData: tokenData{
 				SessionID: sessionId,
 			},
-			User: userData{
-				ID:        user.ID,
-				UserToken: user.UserToken,
-				Name:      user.Name,
-				IsAdmin:   user.IsAdmin,
+			User: loginUserData{
+				roleData: roleData{Role: userRole(user.IsAdmin)},
+				userData: userData{
+					ID:        user.ID,
+					UserToken: user.UserToken,
+					Name:      user.Name,
+					IsAdmin:   user.IsAdmin,
+				},
 			},
 		},
 	})
 }
 
 func respRefreshOK(w http.ResponseWriter, r *http.Request,
-	sessionId string, csrf string) {
+	sessionId string, csrf string, isAdmin bool) {
 
 	render.JSON(w, r, refreshResponse{
 		CSRFToken: csrf,
 		Response:  resp.OK(),
-		Data: tokenData{
-			SessionID: sessionId,
+		Data: refreshData{
+			tokenData: tokenData{SessionID: sessionId},
+			User:      roleData{Role: userRole(isAdmin)},
 		},
 	})
 }
@@ -254,4 +272,11 @@ func respUsersOK(w http.ResponseWriter, r *http.Request, users []*userData) {
 		Response: resp.OK(),
 		Data:     data,
 	})
+}
+
+func userRole(isAdmin bool) string {
+	if isAdmin {
+		return "admin"
+	}
+	return "seller"
 }

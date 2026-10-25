@@ -11,6 +11,7 @@ import (
 	"rms/internal/config"
 	"rms/internal/scheduler"
 	"rms/internal/services/auth"
+	"rms/internal/services/files"
 	"rms/internal/services/marketplace"
 	"rms/internal/services/onec"
 	"rms/internal/services/price"
@@ -40,6 +41,11 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, error)
 	if err != nil {
 		return nil, fmt.Errorf("initialize storage: %w", err)
 	}
+	objects, err := files.NewS3(cfg.S3Path, cfg.S3AccessKey, cfg.S3SecretKey, cfg.S3Bucket, cfg.S3Region)
+	if err != nil {
+		return nil, errors.Join(err, db.Stop())
+	}
+	fileService := files.New(db, objects)
 	tokens := token.NewJWTMaker(cfg.SigningKey)
 	authService := auth.New(auth.Config{
 		TokenTTL: cfg.TokenTTL, RefreshTokenTTL: cfg.RefreshTokenTTL, MaxLoginAttempts: cfg.MaxLoginAttempts, LoginBlockDuration: cfg.LoginBlockDuration,
@@ -57,7 +63,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, error)
 	productService.ConfigureProductInfo(oneCService)
 	server := httpapp.New(httpapp.Config{
 		TokenTTL: cfg.TokenTTL, RefreshTokenTTL: cfg.RefreshTokenTTL, AppOrigins: cfg.AllowedAppOrigins(), Port: cfg.Port, Timeout: cfg.Timeout, IdleTimeout: cfg.IdleTimeout,
-	}, httpapp.Dependencies{Logger: log, Auth: authService, Users: userService, Tokens: tokens, Products: productService, Stores: storeService, Prices: price.New(db), Discounts: price.NewDiscounts(db, cfg.Scheduler.Timezone), Stocks: stock.New(db), ProductInfo: productService, Marketplace: marketplaces})
+	}, httpapp.Dependencies{Files: fileService, Logger: log, Auth: authService, Users: userService, Tokens: tokens, Products: productService, Stores: storeService, Prices: price.New(db), Discounts: price.NewDiscounts(db, cfg.Scheduler.Timezone), Stocks: stock.New(db), ProductInfo: productService, Marketplace: marketplaces})
 	jobs, err := newScheduler(ctx, log, cfg.Scheduler, db, oneCService)
 	if err != nil {
 		return nil, errors.Join(err, db.Stop())

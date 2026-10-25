@@ -13,6 +13,11 @@ import (
 )
 
 type Config struct {
+	S3Path             string           `yaml:"s3_path" env:"RMS_S3_PATH" env-default:"https://s3.regru.cloud/"`
+	S3AccessKey        string           `yaml:"s3_access_key" env:"RMS_S3_ACCESS_KEY"`
+	S3SecretKey        string           `yaml:"s3_secret_key" env:"RMS_S3_SECRET_KEY"`
+	S3Bucket           string           `yaml:"s3_bucket" env:"RMS_S3_BUCKET"`
+	S3Region           string           `yaml:"s3_region" env:"RMS_S3_REGION" env-default:"us-east-1"`
 	OneC               onec.Config      `yaml:"onec"`
 	AppOrigins         []string         `yaml:"app_origins" env:"RMS_APP_ORIGINS" env-separator:","`
 	AppOrigin          string           `yaml:"app_origin" env:"RMS_APP_ORIGIN"`

@@ -33,6 +33,7 @@ type Config struct {
 }
 
 type Dependencies struct {
+	Files       hdlr.FileService
 	Discounts   hdlr.DiscountService
 	Prices      hdlr.PriceService
 	Stocks      hdlr.StockService
@@ -54,6 +55,7 @@ func New(cfg Config, deps Dependencies) *App {
 	handler.ConfigurePriceStock(deps.Prices, deps.Stocks)
 	handler.ConfigureDiscounts(deps.Discounts)
 	handler.ConfigureProductInfo(deps.ProductInfo, deps.Marketplace)
+	handler.ConfigureFiles(deps.Files)
 	tokenMaker := deps.Tokens
 	handler.ConfigureSecurity(tokenMaker)
 	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/MarketplaceData", handler.MarketplaceData)
@@ -66,6 +68,15 @@ func New(cfg Config, deps Dependencies) *App {
 	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/prices", handler.Prices)
 	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/stocks/{store_id}", handler.Stocks)
 
+	router.Route("/files", func(r chi.Router) {
+		r.Use(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth))
+		r.Get("/", handler.Files)
+		r.Get("/by-path", handler.FileByPath)
+		r.Get("/{id}", handler.File)
+		r.Post("/", handler.CreateFile)
+		r.Put("/{id}", handler.UpdateFile)
+		r.Delete("/{id}", handler.DeleteFile)
+	})
 	router.Route("/auth", func(r chi.Router) {
 		r.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/session", handler.Session)
 		r.With(hdlr.OriginMiddleware(cfg.AppOrigins...)).Post("/login", handler.Login)
