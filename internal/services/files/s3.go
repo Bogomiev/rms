@@ -9,6 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/smithy-go"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -83,4 +84,15 @@ func (s *S3) Exists(ctx context.Context, key string) error {
 		return ErrConflict
 	}
 	return e
+}
+
+func (s *S3) Open(ctx context.Context, key string) (io.ReadCloser, error) {
+	out, err := s.client.GetObject(ctx, &s3.GetObjectInput{Bucket: &s.bucket, Key: &key})
+	if missing(err) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("S3 get: %w", err)
+	}
+	return out.Body, nil
 }

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/google/uuid"
+	"io"
 	"rms/internal/domain/models"
 	"strings"
 	"time"
@@ -254,4 +255,23 @@ func (s *Service) Delete(ctx context.Context, id string, marked ...bool) error {
 		}
 		return db.Delete(ctx, id)
 	})
+}
+
+// Content reads an active file through authenticated RMS, without exposing S3 credentials.
+func (s *Service) Content(ctx context.Context, id string) (models.File, io.ReadCloser, error) {
+	f, err := s.Get(ctx, id, "")
+	if err != nil {
+		return f, nil, err
+	}
+	if !f.IsFile || f.DeletedAt != nil {
+		return f, nil, ErrNotFound
+	}
+	reader, ok := s.objects.(interface {
+		Open(context.Context, string) (io.ReadCloser, error)
+	})
+	if !ok {
+		return f, nil, ErrUnavailable
+	}
+	body, err := reader.Open(ctx, f.S3Key)
+	return f, body, err
 }

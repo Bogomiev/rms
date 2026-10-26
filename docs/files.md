@@ -32,6 +32,7 @@ ListBucket для префикса `files/` и DeleteObject.
 |---|---|---|
 | GET | `/files/` | Корневые записи, сортировка priority, name, id |
 | GET | `/files/?parent_id=UUID&include_deleted=true` | Дочерние записи, включая помеченные |
+| GET | `/files/UUID/content` | Содержимое активного файла из S3 (cookie-авторизация), PDF/HTML для просмотра |
 | GET | `/files/UUID` | Метаданные по ID, включая помеченные |
 | GET | `/files/by-path?path=/docs/report.txt` | Метаданные по логическому пути, только активные |
 | POST | `/files/` | Создание с UUID клиента |

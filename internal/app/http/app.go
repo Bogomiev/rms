@@ -61,6 +61,7 @@ func New(cfg Config, deps Dependencies) *App {
 	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/MarketplaceData", handler.MarketplaceData)
 	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/product_info", handler.ProductInfo)
 	router.Get("/usertokenvalid", handler.UserTokenValid)
+	router.Get("/version", handler.Version)
 	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/products", handler.Products)
 	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/stores", handler.Stores)
 
@@ -73,6 +74,7 @@ func New(cfg Config, deps Dependencies) *App {
 		r.Get("/", handler.Files)
 		r.Get("/by-path", handler.FileByPath)
 		r.Get("/{id}", handler.File)
+		r.Get("/{id}/content", handler.FileContent)
 		r.Post("/", handler.CreateFile)
 		r.Put("/{id}", handler.UpdateFile)
 		r.Delete("/{id}", handler.DeleteFile)

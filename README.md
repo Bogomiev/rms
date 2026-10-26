@@ -40,6 +40,7 @@ make install
 
 | Метод | Назначение |
 | --- | --- |
+| `GET /version` | Без авторизации: версия приложения, `{"resultCode":0,"messages":[],"data":{"version":"1.1.1.2"}}` |
 | `POST /auth/login` | JSON `{"user_token":"…","password":"…"}`; требует Origin; возвращает пользователя, идентификатор сессии и csrfToken, устанавливает cookies |
 | `POST /auth/refresh` | Требует Origin и cookie `refresh_token`, атомарно заменяет сессию и обе cookies, возвращает новый csrfToken; access-токен не требуется |
 | `POST /auth/logout` | Требует access-cookie, X-CSRF-Token и refresh-cookie; удаляет сессию и обе cookies |

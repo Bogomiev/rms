@@ -8,10 +8,13 @@ import (
 	"github.com/go-chi/render"
 	"github.com/google/uuid"
 	"io"
+	"mime"
 	"net/http"
+	"path/filepath"
 	"rms/internal/domain/models"
 	"rms/internal/services/files"
 	"strconv"
+	"strings"
 )
 
 type FileService interface {
@@ -138,4 +141,33 @@ func (h *Handler) DeleteFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) FileContent(w http.ResponseWriter, r *http.Request) {
+	service, ok := h.files.(interface {
+		Content(context.Context, string) (models.File, io.ReadCloser, error)
+	})
+	if !ok {
+		fileError(w, r, files.ErrUnavailable)
+		return
+	}
+	f, body, err := service.Content(r.Context(), chi.URLParam(r, "id"))
+	if err != nil {
+		fileError(w, r, err)
+		return
+	}
+	defer body.Close()
+	kind := "application/octet-stream"
+	switch strings.ToLower(filepath.Ext(f.Name)) {
+	case ".pdf":
+		kind = "application/pdf"
+	case ".html":
+		kind = "text/html; charset=utf-8"
+	}
+	w.Header().Set("Content-Type", kind)
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("inline", map[string]string{"filename": f.Name}))
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Security-Policy", "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:")
+	_, _ = io.Copy(w, body)
 }
