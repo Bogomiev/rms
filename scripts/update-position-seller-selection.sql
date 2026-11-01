@@ -1,2 +1,0 @@
-ALTER TABLE positions
- ADD COLUMN IF NOT EXISTS seller_selection_available BOOLEAN NOT NULL DEFAULT FALSE;
