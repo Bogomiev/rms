@@ -20,6 +20,7 @@ import (
 	"rms/internal/services/role"
 	"rms/internal/services/stock"
 	"rms/internal/services/store"
+	"rms/internal/services/task"
 	"rms/internal/services/user"
 	"rms/internal/storage/postgres"
 	"rms/internal/token"
@@ -65,7 +66,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, error)
 	productService.ConfigureProductInfo(oneCService)
 	server := httpapp.New(httpapp.Config{
 		TokenTTL: cfg.TokenTTL, RefreshTokenTTL: cfg.RefreshTokenTTL, AppOrigins: cfg.AllowedAppOrigins(), Port: cfg.Port, Timeout: cfg.Timeout, IdleTimeout: cfg.IdleTimeout,
-	}, httpapp.Dependencies{Roles: role.New(db), Positions: position.New(db), Files: fileService, Logger: log, Auth: authService, Users: userService, Tokens: tokens, Products: productService, Stores: storeService, Prices: price.New(db), Discounts: price.NewDiscounts(db, cfg.Scheduler.Timezone), Stocks: stock.New(db), ProductInfo: productService, Marketplace: marketplaces})
+	}, httpapp.Dependencies{Tasks: task.New(db), Roles: role.New(db), Positions: position.New(db), Files: fileService, Logger: log, Auth: authService, Users: userService, Tokens: tokens, Products: productService, Stores: storeService, Prices: price.New(db), Discounts: price.NewDiscounts(db, cfg.Scheduler.Timezone), Stocks: stock.New(db), ProductInfo: productService, Marketplace: marketplaces})
 	jobs, err := newScheduler(ctx, log, cfg.Scheduler, db, oneCService)
 	if err != nil {
 		return nil, errors.Join(err, db.Stop())

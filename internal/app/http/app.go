@@ -33,6 +33,7 @@ type Config struct {
 }
 
 type Dependencies struct {
+	Tasks       hdlr.TaskService
 	Roles       hdlr.RoleService
 	Positions   hdlr.PositionService
 	Files       hdlr.FileService
@@ -60,6 +61,7 @@ func New(cfg Config, deps Dependencies) *App {
 	handler.ConfigureFiles(deps.Files)
 	handler.ConfigureRoles(deps.Roles)
 	handler.ConfigurePositions(deps.Positions)
+	handler.ConfigureTasks(deps.Tasks)
 	tokenMaker := deps.Tokens
 	handler.ConfigureSecurity(tokenMaker)
 	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/MarketplaceData", handler.MarketplaceData)
@@ -112,6 +114,16 @@ func New(cfg Config, deps Dependencies) *App {
 		r.With(hdlr.GetAdminMiddlewareFunc(tokenMaker, deps.Auth)).Put("/{id}", handler.SavePosition)
 		r.With(hdlr.GetAdminMiddlewareFunc(tokenMaker, deps.Auth)).Delete("/{id}", handler.DeletePosition)
 	})
+	for _, kind := range []string{"task_types", "task_scheduling", "tasks", "task_status_history"} {
+		router.Route("/"+kind, func(r chi.Router) {
+			r.Use(hdlr.GetAdminMiddlewareFunc(tokenMaker, deps.Auth))
+			r.Get("/", handler.TaskResource(kind))
+			r.Get("/{id}", handler.TaskResource(kind))
+			r.Post("/", handler.TaskResource(kind))
+			r.Put("/{id}", handler.TaskResource(kind))
+			r.Delete("/{id}", handler.TaskResource(kind))
+		})
+	}
 	address := fmt.Sprintf(":%d", cfg.Port)
 
 	srv := &http.Server{

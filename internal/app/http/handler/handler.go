@@ -27,6 +27,7 @@ type TokenVerifier interface {
 }
 
 type Handler struct {
+	tasks          TaskService
 	roles          RoleService
 	positions      PositionService
 	files          FileService

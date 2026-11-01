@@ -13,7 +13,11 @@ import (
 const maxRequestBytes = 16 * 1024
 
 func decodeRequest(w http.ResponseWriter, r *http.Request, value any) bool {
-	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBytes)
+	return decodeRequestLimit(w, r, value, maxRequestBytes)
+}
+
+func decodeRequestLimit(w http.ResponseWriter, r *http.Request, value any, limit int64) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, limit)
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	err := decoder.Decode(value)
@@ -27,7 +31,7 @@ func decodeRequest(w http.ResponseWriter, r *http.Request, value any) bool {
 	status, message := http.StatusBadRequest, "body must contain one valid JSON object with known fields"
 	var sizeError *http.MaxBytesError
 	if errors.As(err, &sizeError) {
-		status, message = http.StatusRequestEntityTooLarge, "request body exceeds 16 KiB"
+		status, message = http.StatusRequestEntityTooLarge, "request body exceeds allowed size"
 	}
 	resp.HttpResponseError(w, r, status, 1, []string{message})
 	return false
