@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"rms/internal/lib/validation"
 	"rms/internal/services"
+	"time"
 
 	"rms/internal/domain/models"
 	resp "rms/internal/lib/api/response"
@@ -25,13 +26,14 @@ type roleData struct {
 }
 
 type loginUserData struct {
+	Roles []models.Role `json:"roles"`
 	userData
 	roleData
 }
 
 type refreshData struct {
 	tokenData
-	User roleData `json:"user"`
+	User loginUserData `json:"user"`
 }
 
 type errorResponse struct {
@@ -55,10 +57,17 @@ type refreshResponse struct {
 }
 
 type userData struct {
-	ID        int64  `json:"id"`
-	UserToken string `json:"user_token"`
-	Name      string `json:"name"`
-	IsAdmin   bool   `json:"isAdmin"`
+	SellerSelectionAvailable bool `json:"seller_selection_available"`
+	StoreSelectionAvailable  bool `json:"store_selection_available"`
+	StoreSelectionRequired   bool `json:"store_selection_required"`
+
+	LoginBlockedUntil *time.Time `json:"login_blocked_until"`
+	Position          *int64     `json:"position"`
+	PositionName      *string    `json:"position_name"`
+	ID                int64      `json:"id"`
+	UserToken         string     `json:"user_token"`
+	Name              string     `json:"name"`
+	IsAdmin           bool       `json:"isAdmin"`
 }
 
 type userResponse struct {
@@ -100,8 +109,14 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
+	details, err := h.userService.UserByID(r.Context(), user.ID)
+	if err != nil {
+		writeServiceError(w, r, err)
+		return
+	}
+	user = &details.User
 	h.setTokenCookies(w, accessToken, refreshToken)
-	respLoginOK(w, r, sessionId, user, claims.CSRFToken)
+	respLoginOK(w, r, sessionId, user, claims.CSRFToken, details.Roles)
 }
 
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
@@ -146,33 +161,40 @@ func (h *Handler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	h.setTokenCookies(w, accessToken, refreshToken)
-	respRefreshOK(w, r, sessionId, claims.CSRFToken, claims.IsAdmin)
-}
-
-func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
-	const op = "handlers.user.CreateUser"
-
-	var u userReq
-	if !decodeRequest(w, r, &u) {
-		return
-	}
-
-	errMessages := validation.NewUser(u.UserToken, u.Name, u.Password, u.IsAdmin)
-
-	if len(errMessages) > 0 {
-		resp.HttpResponseError(w, r, http.StatusBadRequest, 1, errMessages)
-		return
-	}
-
-	created, err := h.userService.RegisterNewUser(r.Context(), u.UserToken, u.Name, u.Password, u.IsAdmin)
+	details, err := h.userService.UserByID(r.Context(), claims.UserID)
 	if err != nil {
 		writeServiceError(w, r, err)
 		return
 	}
-	u.ID = created
+	h.setTokenCookies(w, accessToken, refreshToken)
+	respRefreshOK(w, r, sessionId, claims.CSRFToken, details)
+}
 
-	respUserOK(w, r, u)
+func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
+	var in models.UserInput
+	if !decodeRequest(w, r, &in) {
+		return
+	}
+	messages := validation.NewUser(in.UserToken, in.Name, in.Password, in.IsAdmin)
+	if in.Position != nil && *in.Position <= 0 {
+		messages = append(messages, "position must be positive")
+	}
+	if len(messages) > 0 {
+		resp.HttpResponseError(w, r, http.StatusBadRequest, 1, messages)
+		return
+	}
+	id, err := h.userService.AddUser(r.Context(), in)
+	if err != nil {
+		writeServiceError(w, r, err)
+		return
+	}
+	u, err := h.userService.UserByID(r.Context(), id)
+	if err != nil {
+		writeServiceError(w, r, err)
+		return
+	}
+	render.Status(r, http.StatusCreated)
+	render.JSON(w, r, userResponse{Response: resp.OK(), Data: toUserData(u.User)})
 }
 
 func (h *Handler) UserList(w http.ResponseWriter, r *http.Request) {
@@ -194,20 +216,19 @@ func (h *Handler) UserList(w http.ResponseWriter, r *http.Request) {
 	for i := range users {
 		u := users[i]
 
-		usrs = append(usrs, &userData{
-			ID:        u.ID,
-			UserToken: u.UserToken,
-			Name:      u.Name,
-			IsAdmin:   u.IsAdmin,
-		})
+		data := toUserData(*u)
+		usrs = append(usrs, &data)
 	}
 
 	respUsersOK(w, r, usrs)
 }
 
 func respLoginOK(w http.ResponseWriter, r *http.Request,
-	sessionId string, user *models.User, csrf string) {
+	sessionId string, user *models.User, csrf string, roles []models.Role) {
 
+	if roles == nil {
+		roles = []models.Role{}
+	}
 	render.JSON(w, r, loginResponse{
 		CSRFToken: csrf,
 		Response:  resp.OK(),
@@ -216,27 +237,27 @@ func respLoginOK(w http.ResponseWriter, r *http.Request,
 				SessionID: sessionId,
 			},
 			User: loginUserData{
-				roleData: roleData{Role: userRole(user.IsAdmin)},
-				userData: userData{
-					ID:        user.ID,
-					UserToken: user.UserToken,
-					Name:      user.Name,
-					IsAdmin:   user.IsAdmin,
-				},
+				Roles:    roles,
+				roleData: roleData{Role: userRole((models.UserDetails{User: *user, Roles: roles}).HasAdminAccess())},
+				userData: toUserData(*user),
 			},
 		},
 	})
 }
 
 func respRefreshOK(w http.ResponseWriter, r *http.Request,
-	sessionId string, csrf string, isAdmin bool) {
+	sessionId string, csrf string, details models.UserDetails) {
+	u := loginUserData{userData: toUserData(details.User), roleData: roleData{Role: userRole(details.HasAdminAccess())}, Roles: details.Roles}
+	if u.Roles == nil {
+		u.Roles = []models.Role{}
+	}
 
 	render.JSON(w, r, refreshResponse{
 		CSRFToken: csrf,
 		Response:  resp.OK(),
 		Data: refreshData{
 			tokenData: tokenData{SessionID: sessionId},
-			User:      roleData{Role: userRole(isAdmin)},
+			User:      u,
 		},
 	})
 }
@@ -244,19 +265,6 @@ func respRefreshOK(w http.ResponseWriter, r *http.Request,
 func respLogoutOK(w http.ResponseWriter, r *http.Request) {
 	render.JSON(w, r, logoutResponse{
 		Response: resp.OK(),
-	})
-}
-
-func respUserOK(w http.ResponseWriter, r *http.Request, u userReq) {
-	render.Status(r, http.StatusCreated)
-	render.JSON(w, r, userResponse{
-		Response: resp.OK(),
-		Data: userData{
-			ID:        u.ID,
-			UserToken: u.UserToken,
-			Name:      u.Name,
-			IsAdmin:   u.IsAdmin,
-		},
 	})
 }
 

@@ -23,6 +23,12 @@ func writeServiceError(w http.ResponseWriter, r *http.Request, err error) {
 	code := 1
 	status, message := http.StatusInternalServerError, "internal server error"
 	switch {
+	case errors.Is(err, services.ErrInvalid):
+		status, message = http.StatusBadRequest, "invalid input"
+	case errors.Is(err, services.ErrNotFound):
+		status, message = http.StatusNotFound, "record not found"
+	case errors.Is(err, services.ErrConflict):
+		status, message = http.StatusConflict, "record is referenced or already exists"
 	case errors.Is(err, services.ErrInvalidCredentials):
 		status, message = http.StatusUnauthorized, "invalid credentials"
 	case errors.Is(err, services.ErrInvalidSession):

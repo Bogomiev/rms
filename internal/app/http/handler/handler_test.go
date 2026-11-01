@@ -14,7 +14,14 @@ import (
 	"rms/internal/token"
 )
 
-type serviceStub struct{ call func(context.Context) error }
+type serviceStub struct {
+	UserManagementService
+	call func(context.Context) error
+}
+
+func (s serviceStub) UserByID(ctx context.Context, id int64) (models.UserDetails, error) {
+	return models.UserDetails{User: models.User{ID: id}, Roles: []models.Role{}}, s.call(ctx)
+}
 
 func (s serviceStub) Login(ctx context.Context, _, _ string) (string, string, string, *models.User, error) {
 	return "session", "access", "refresh", &models.User{}, s.call(ctx)
@@ -126,4 +133,12 @@ func (s serviceStub) UserTokenValid(ctx context.Context, _ string) (bool, error)
 
 func (s serviceStub) ValidateAccess(ctx context.Context, _ *token.UserClaims) error {
 	return s.call(ctx)
+}
+
+func (s serviceStub) AddUser(ctx context.Context, in models.UserInput) (int64, error) {
+	return 1, s.call(ctx)
+}
+
+func (s serviceStub) StoreSelectionSettings(context.Context, string) (models.StoreSelectionSettings, error) {
+	return models.StoreSelectionSettings{}, nil
 }

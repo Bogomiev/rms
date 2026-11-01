@@ -31,6 +31,7 @@ var (
 )
 
 type AuthStorage interface {
+	UserByID(context.Context, int64) (models.UserDetails, error)
 	WithLoginAttempt(context.Context, string, func(*models.LoginAttempt) error) error
 }
 
@@ -126,16 +127,21 @@ func (a *Auth) Login(
 		return "", "", "", nil, fmt.Errorf("%s: %w", op, err)
 	}
 
+	details, err := a.authStorage.UserByID(ctx, user.ID)
+	if err != nil {
+		return "", "", "", nil, fmt.Errorf("%s: %w", op, err)
+	}
+	isAdmin := details.HasAdminAccess()
 	log.Info("user logged in successfully")
 
-	refreshToken, refreshClaims, err := a.tokenMaker.CreateToken(user.ID, user.UserToken, user.IsAdmin, a.refreshTokenTTL, token.Refresh)
+	refreshToken, refreshClaims, err := a.tokenMaker.CreateToken(user.ID, user.UserToken, isAdmin, a.refreshTokenTTL, token.Refresh)
 	if err != nil {
 		log.Error("failed to generate refresh token", sl.Err(err))
 
 		return "", "", "", nil, fmt.Errorf("%s: %w", op, err)
 	}
 
-	accessToken, _, err := a.tokenMaker.CreateToken(user.ID, user.UserToken, user.IsAdmin, a.tokenTTL, token.Access, refreshClaims.ID)
+	accessToken, _, err := a.tokenMaker.CreateToken(user.ID, user.UserToken, isAdmin, a.tokenTTL, token.Access, refreshClaims.ID)
 	if err != nil {
 		log.Error("failed to generate token", sl.Err(err))
 
@@ -218,6 +224,16 @@ func (a *Auth) RefreshToken(
 		return "", "", "", srvc.ErrInvalidSession
 	}
 
+	// Reload current permissions instead of perpetuating admin rights from an old JWT.
+	current, err := a.authStorage.UserByID(ctx, claims.UserID)
+	if err != nil {
+		return "", "", "", srvc.ErrInvalidSession
+	}
+	if current.LoginBlockedUntil != nil && current.LoginBlockedUntil.After(time.Now()) {
+		return "", "", "", &srvc.LoginBlockedError{Until: *current.LoginBlockedUntil}
+	}
+	claims.UserToken = current.UserToken
+	claims.IsAdmin = current.HasAdminAccess()
 	refreshToken, refreshClaims, err := a.tokenMaker.CreateToken(claims.UserID, claims.UserToken, claims.IsAdmin, a.refreshTokenTTL, token.Refresh)
 	if err != nil {
 		log.Error("failed to generate refresh token", sl.Err(err))
@@ -265,5 +281,14 @@ func (a *Auth) ValidateAccess(ctx context.Context, claims *token.UserClaims) err
 	if session == nil || session.IsRevoked || session.UserID != claims.UserID || !session.ExpiresAt.After(time.Now()) {
 		return srvc.ErrInvalidSession
 	}
+	user, err := a.authStorage.UserByID(ctx, claims.UserID)
+	if err != nil {
+		return srvc.ErrInvalidSession
+	}
+	if user.LoginBlockedUntil != nil && user.LoginBlockedUntil.After(time.Now()) {
+		return srvc.ErrInvalidSession
+	}
+	claims.IsAdmin = user.HasAdminAccess()
+	claims.UserToken = user.UserToken
 	return nil
 }

@@ -15,8 +15,10 @@ type AuthService interface {
 }
 
 type UserService interface {
+	UserManagementService
 	RegisterNewUser(context.Context, string, string, string, bool) (int64, error)
 	UserTokenValid(context.Context, string) (bool, error)
+	StoreSelectionSettings(context.Context, string) (models.StoreSelectionSettings, error)
 	UserList(context.Context, models.UserPage) ([]*models.User, error)
 }
 
@@ -25,6 +27,8 @@ type TokenVerifier interface {
 }
 
 type Handler struct {
+	roles          RoleService
+	positions      PositionService
 	files          FileService
 	discounts      DiscountService
 	prices         PriceService

@@ -62,5 +62,11 @@ func (h *Handler) UserTokenValid(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	w.WriteHeader(http.StatusOK)
+	settings, err := h.userService.StoreSelectionSettings(r.Context(), r.URL.Query().Get("token"))
+	if err != nil {
+		writeServiceError(w, r, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	render.JSON(w, r, settings)
 }

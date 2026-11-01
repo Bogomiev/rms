@@ -19,6 +19,7 @@ type User struct {
 }
 
 type UserStorage interface {
+	ManagementStorage
 	AddUser(ctx context.Context, userToken string, name string, password string, isAdmin bool) (uid int64, err error)
 	User(ctx context.Context, userToken string) (models.User, error)
 	Users(ctx context.Context, page models.UserPage) ([]*models.User, error)
@@ -119,4 +120,13 @@ func (s *User) UserTokenValid(ctx context.Context, userToken string) (bool, erro
 		return false, fmt.Errorf("User.UserTokenValid: %w", err)
 	}
 	return true, nil
+}
+
+// StoreSelectionSettings exposes only the settings needed to render the login form.
+func (s *User) StoreSelectionSettings(ctx context.Context, userToken string) (models.StoreSelectionSettings, error) {
+	u, err := s.usrStorage.User(ctx, userToken)
+	if err != nil {
+		return models.StoreSelectionSettings{}, err
+	}
+	return models.StoreSelectionSettings{SellerSelectionAvailable: u.SellerSelectionAvailable, StoreSelectionAvailable: u.StoreSelectionAvailable, StoreSelectionRequired: u.StoreSelectionRequired}, nil
 }

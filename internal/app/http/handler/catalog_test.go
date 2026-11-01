@@ -76,3 +76,20 @@ func TestUserTokenValidStatus(t *testing.T) {
 		}
 	}
 }
+
+func (s *catalogStub) StoreSelectionSettings(context.Context, string) (models.StoreSelectionSettings, error) {
+	return models.StoreSelectionSettings{SellerSelectionAvailable: true, StoreSelectionAvailable: true, StoreSelectionRequired: true}, s.err
+}
+
+func TestUserTokenValidReturnsStoreSettings(t *testing.T) {
+	h := NewHandler(nil, &catalogStub{valid: true})
+	w := httptest.NewRecorder()
+	h.UserTokenValid(w, httptest.NewRequest("GET", "/usertokenvalid?token=employee", nil))
+	var settings models.StoreSelectionSettings
+	if err := json.Unmarshal(w.Body.Bytes(), &settings); err != nil || w.Code != 200 || !settings.SellerSelectionAvailable || !settings.StoreSelectionAvailable || !settings.StoreSelectionRequired {
+		t.Fatalf("unexpected settings: %s", w.Body.String())
+	}
+	if w.Header().Get("Cache-Control") != "no-store" {
+		t.Fatal("login settings must not be cached")
+	}
+}

@@ -45,11 +45,6 @@ func GetAdminMiddlewareFunc(tokenMaker TokenVerifier, sessions ...SessionValidat
 				return
 			}
 
-			if !claims.IsAdmin {
-				writeServiceError(w, r, services.ErrForbidden)
-				return
-			}
-
 			if !validCSRF(w, r, claims) {
 				return
 			}
@@ -59,6 +54,11 @@ func GetAdminMiddlewareFunc(tokenMaker TokenVerifier, sessions ...SessionValidat
 					return
 				}
 			}
+			if !claims.IsAdmin {
+				writeServiceError(w, r, services.ErrForbidden)
+				return
+			}
+
 			ctx := context.WithValue(r.Context(), authKey{}, claims)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})

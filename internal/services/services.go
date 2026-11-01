@@ -7,6 +7,10 @@ import (
 )
 
 var (
+	ErrInvalid  = errors.New("invalid input")
+	ErrConflict = errors.New("record is referenced or already exists")
+	ErrNotFound = errors.New("record not found")
+
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrForbidden          = errors.New("insufficient permissions")
 	ErrUserExists         = errors.New("user already exists")

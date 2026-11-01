@@ -33,6 +33,8 @@ type Config struct {
 }
 
 type Dependencies struct {
+	Roles       hdlr.RoleService
+	Positions   hdlr.PositionService
 	Files       hdlr.FileService
 	Discounts   hdlr.DiscountService
 	Prices      hdlr.PriceService
@@ -56,6 +58,8 @@ func New(cfg Config, deps Dependencies) *App {
 	handler.ConfigureDiscounts(deps.Discounts)
 	handler.ConfigureProductInfo(deps.ProductInfo, deps.Marketplace)
 	handler.ConfigureFiles(deps.Files)
+	handler.ConfigureRoles(deps.Roles)
+	handler.ConfigurePositions(deps.Positions)
 	tokenMaker := deps.Tokens
 	handler.ConfigureSecurity(tokenMaker)
 	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/MarketplaceData", handler.MarketplaceData)
@@ -89,8 +93,25 @@ func New(cfg Config, deps Dependencies) *App {
 	router.Route("/users", func(r chi.Router) {
 		r.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/", handler.UserList)
 		r.With(hdlr.GetAdminMiddlewareFunc(tokenMaker, deps.Auth)).Post("/", handler.CreateUser)
+		r.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/{id}", handler.UserByID)
+		r.With(hdlr.GetAdminMiddlewareFunc(tokenMaker, deps.Auth)).Put("/{id}", handler.SaveUser)
+		r.With(hdlr.GetAdminMiddlewareFunc(tokenMaker, deps.Auth)).Delete("/{id}", handler.DeleteUser)
 	})
 
+	router.Route("/roles", func(r chi.Router) {
+		r.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/", handler.RoleList)
+		r.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/{id}", handler.RoleByID)
+		r.With(hdlr.GetAdminMiddlewareFunc(tokenMaker, deps.Auth)).Post("/", handler.CreateRole)
+		r.With(hdlr.GetAdminMiddlewareFunc(tokenMaker, deps.Auth)).Put("/{id}", handler.SaveRole)
+		r.With(hdlr.GetAdminMiddlewareFunc(tokenMaker, deps.Auth)).Delete("/{id}", handler.DeleteRole)
+	})
+	router.Route("/positions", func(r chi.Router) {
+		r.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/", handler.PositionList)
+		r.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/{id}", handler.PositionByID)
+		r.With(hdlr.GetAdminMiddlewareFunc(tokenMaker, deps.Auth)).Post("/", handler.CreatePosition)
+		r.With(hdlr.GetAdminMiddlewareFunc(tokenMaker, deps.Auth)).Put("/{id}", handler.SavePosition)
+		r.With(hdlr.GetAdminMiddlewareFunc(tokenMaker, deps.Auth)).Delete("/{id}", handler.DeletePosition)
+	})
 	address := fmt.Sprintf(":%d", cfg.Port)
 
 	srv := &http.Server{

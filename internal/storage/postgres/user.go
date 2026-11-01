@@ -38,7 +38,7 @@ func (s *Storage) AddUser(ctx context.Context, userToken string, name string, pa
 func (s *Storage) User(ctx context.Context, userToken string) (models.User, error) {
 	const op = "storage.postgres.User"
 
-	stmt, err := s.db.PrepareContext(ctx, "SELECT id, name, user_token, password, is_admin FROM users WHERE user_token = $1")
+	stmt, err := s.db.PrepareContext(ctx, "SELECT u.id, u.name, u.user_token, u.password, u.is_admin, u.position, p.name, COALESCE(p.seller_selection_available,FALSE), COALESCE(p.store_selection_available,FALSE), COALESCE(p.store_selection_required,FALSE), u.login_blocked_until FROM users u LEFT JOIN positions p ON p.id=u.position WHERE u.user_token = $1")
 	if err != nil {
 		return models.User{}, fmt.Errorf("%s: prepare statement: %w", op, err)
 	}
@@ -47,7 +47,7 @@ func (s *Storage) User(ctx context.Context, userToken string) (models.User, erro
 	row := stmt.QueryRowContext(ctx, userToken)
 
 	var user models.User
-	err = row.Scan(&user.ID, &user.Name, &user.UserToken, &user.Password, &user.IsAdmin)
+	err = row.Scan(&user.ID, &user.Name, &user.UserToken, &user.Password, &user.IsAdmin, &user.Position, &user.PositionName, &user.SellerSelectionAvailable, &user.StoreSelectionAvailable, &user.StoreSelectionRequired, &user.LoginBlockedUntil)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return models.User{}, storage.ErrUserNotFound
@@ -66,7 +66,7 @@ func (s *Storage) Users(ctx context.Context, page models.UserPage) ([]*models.Us
 		return nil, fmt.Errorf("%s: invalid pagination", op)
 	}
 
-	stmt, err := s.db.PrepareContext(ctx, "SELECT id, name, user_token, is_admin FROM users ORDER BY id LIMIT $1 OFFSET $2")
+	stmt, err := s.db.PrepareContext(ctx, "SELECT u.id, u.name, u.user_token, u.is_admin, u.position, p.name, COALESCE(p.seller_selection_available,FALSE), COALESCE(p.store_selection_available,FALSE), COALESCE(p.store_selection_required,FALSE), u.login_blocked_until FROM users u LEFT JOIN positions p ON p.id=u.position ORDER BY u.id LIMIT $1 OFFSET $2")
 	if err != nil {
 		return []*models.User{}, fmt.Errorf("%s: prepare statement: %w", op, err)
 	}
@@ -82,7 +82,7 @@ func (s *Storage) Users(ctx context.Context, page models.UserPage) ([]*models.Us
 
 	for rows.Next() {
 		var user models.User
-		if err := rows.Scan(&user.ID, &user.Name, &user.UserToken, &user.IsAdmin); err != nil {
+		if err := rows.Scan(&user.ID, &user.Name, &user.UserToken, &user.IsAdmin, &user.Position, &user.PositionName, &user.SellerSelectionAvailable, &user.StoreSelectionAvailable, &user.StoreSelectionRequired, &user.LoginBlockedUntil); err != nil {
 			return []*models.User{}, fmt.Errorf("error listing users: %w", err)
 		}
 		users = append(users, &user)

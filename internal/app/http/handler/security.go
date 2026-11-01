@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"github.com/go-chi/render"
 	"net/http"
+	"rms/internal/domain/models"
 	resp "rms/internal/lib/api/response"
 	"rms/internal/services"
 	"rms/internal/token"
@@ -48,12 +49,21 @@ func validCSRF(w http.ResponseWriter, r *http.Request, claims *token.UserClaims)
 
 func (h *Handler) Session(w http.ResponseWriter, r *http.Request) {
 	claims := r.Context().Value(authKey{}).(*token.UserClaims)
+	details, err := h.userService.UserByID(r.Context(), claims.UserID)
+	if err != nil {
+		writeServiceError(w, r, err)
+		return
+	}
+	if details.Roles == nil {
+		details.Roles = []models.Role{}
+	}
 	w.Header().Set("Cache-Control", "no-store")
 	render.JSON(w, r, struct {
 		resp.Response
-		CSRFToken string `json:"csrfToken"`
-		UserToken string `json:"userToken"`
-	}{resp.OK(), claims.CSRFToken, claims.UserToken})
+		CSRFToken string    `json:"csrfToken"`
+		UserToken string    `json:"userToken"`
+		Data      loginData `json:"data"`
+	}{resp.OK(), claims.CSRFToken, details.UserToken, loginData{User: loginUserData{userData: toUserData(details.User), roleData: roleData{Role: userRole(details.HasAdminAccess())}, Roles: details.Roles}}})
 }
 
 func (h *Handler) ConfigureSecurity(tokens TokenVerifier) { h.tokens = tokens }

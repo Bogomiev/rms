@@ -14,12 +14,14 @@ func TestAuthResponseRole(t *testing.T) {
 	}{{"admin", true}, {"seller", false}} {
 		for _, action := range []string{"login", "refresh"} {
 			t.Run(action+"/"+tc.role, func(t *testing.T) {
+				position := int64(1)
+				roles := []models.Role{{ID: 2, Name: "order"}}
 				w := httptest.NewRecorder()
 				r := httptest.NewRequest("POST", "/auth/"+action, nil)
 				if action == "login" {
-					respLoginOK(w, r, "session", &models.User{IsAdmin: tc.admin}, "csrf")
+					respLoginOK(w, r, "session", &models.User{IsAdmin: tc.admin, Position: &position}, "csrf", roles)
 				} else {
-					respRefreshOK(w, r, "session", "csrf", tc.admin)
+					respRefreshOK(w, r, "session", "csrf", models.UserDetails{User: models.User{IsAdmin: tc.admin, Position: &position}, Roles: roles})
 				}
 				var body struct {
 					Role string `json:"role"`

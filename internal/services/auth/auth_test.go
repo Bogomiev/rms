@@ -17,10 +17,16 @@ import (
 )
 
 type usersStub struct {
+	roles   []models.Role
 	user    models.User
 	err     error
 	ctx     context.Context
 	attempt models.LoginAttempt
+}
+
+func (s *usersStub) UserByID(ctx context.Context, _ int64) (models.UserDetails, error) {
+	s.ctx = ctx
+	return models.UserDetails{User: s.user, Roles: s.roles}, s.err
 }
 
 func (s *usersStub) User(ctx context.Context, _ string) (models.User, error) {
@@ -155,7 +161,7 @@ func TestRefreshChecksSessionOwnerAndExpiration(t *testing.T) {
 				t.Fatal(err)
 			}
 			sessions := &sessionsStub{session: &models.Session{RefreshToken: refresh, ID: claims.ID, UserID: tc.userID, ExpiresAt: tc.expiry, IsRevoked: tc.revoked}}
-			a := New(Config{TokenTTL: time.Minute, RefreshTokenTTL: time.Hour}, Dependencies{Logger: testLogger(), Tokens: maker, Sessions: sessions})
+			a := New(Config{TokenTTL: time.Minute, RefreshTokenTTL: time.Hour}, Dependencies{Logger: testLogger(), Tokens: maker, Sessions: sessions, Users: &usersStub{user: models.User{ID: 42, UserToken: "new@example.com"}}})
 			_, _, _, err = a.RefreshToken(context.Background(), refresh)
 			if tc.valid {
 				if err != nil {
@@ -246,5 +252,80 @@ func TestRefreshRotatesCSRFAndAccessSession(t *testing.T) {
 	sessions.session.IsRevoked = true
 	if err = a.ValidateAccess(context.Background(), claims); !errors.Is(err, services.ErrInvalidSession) {
 		t.Fatal("revoked access accepted", err)
+	}
+}
+
+func TestRefreshAndAccessUseCurrentAdminStatus(t *testing.T) {
+	position := int64(2)
+	users := &usersStub{user: models.User{ID: 42, UserToken: "admin", IsAdmin: true, Position: &position}, roles: []models.Role{{ID: 2, Name: "order"}}}
+	users.user.Password, _ = password.HashPassword("password")
+	maker := token.NewJWTMaker("test-key")
+	sessions := &sessionsStub{}
+	a := New(Config{TokenTTL: time.Minute, RefreshTokenTTL: time.Hour}, Dependencies{Logger: testLogger(), Users: users, Sessions: sessions, Tokens: maker})
+	_, access, refresh, _, err := a.Login(context.Background(), "admin", "password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims, _ := maker.VerifyToken(access)
+	users.user.IsAdmin = false
+	if err = a.ValidateAccess(context.Background(), claims); err != nil || claims.IsAdmin {
+		t.Fatal("cached admin rights retained", err)
+	}
+	_, access, _, err = a.RefreshToken(context.Background(), refresh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims, _ = maker.VerifyToken(access)
+	if claims.IsAdmin {
+		t.Fatal("admin rights retained after refresh")
+	}
+	until := time.Now().Add(time.Hour)
+	users.user.LoginBlockedUntil = &until
+	if err = a.ValidateAccess(context.Background(), claims); !errors.Is(err, services.ErrInvalidSession) {
+		t.Fatal("blocked account accepted", err)
+	}
+}
+
+func TestUnconfiguredPermissionsGrantAdminAcrossSessionLifecycle(t *testing.T) {
+	position := int64(2)
+	hash, _ := password.HashPassword("password")
+	for _, tc := range []struct {
+		name     string
+		position *int64
+		roles    []models.Role
+		admin    bool
+	}{
+		{"no position", nil, []models.Role{{Name: "order"}}, true},
+		{"empty roles", &position, []models.Role{}, true},
+		{"configured seller", &position, []models.Role{{Name: "order"}}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			users := &usersStub{user: models.User{ID: 42, UserToken: "employee", Password: hash, Position: tc.position}, roles: tc.roles}
+			maker := token.NewJWTMaker("test-key")
+			sessions := &sessionsStub{}
+			a := New(Config{TokenTTL: time.Minute, RefreshTokenTTL: time.Hour}, Dependencies{Logger: testLogger(), Users: users, Sessions: sessions, Tokens: maker})
+			_, access, refresh, _, err := a.Login(context.Background(), "employee", "password")
+			if err != nil {
+				t.Fatal(err)
+			}
+			claims, _ := maker.VerifyToken(access)
+			if claims.IsAdmin != tc.admin {
+				t.Fatal("login admin", claims.IsAdmin)
+			}
+			if err = a.ValidateAccess(context.Background(), claims); err != nil || claims.IsAdmin != tc.admin {
+				t.Fatal("session admin", claims.IsAdmin, err)
+			}
+			_, access, _, err = a.RefreshToken(context.Background(), refresh)
+			if err != nil {
+				t.Fatal(err)
+			}
+			claims, _ = maker.VerifyToken(access)
+			if claims.IsAdmin != tc.admin {
+				t.Fatal("refresh admin", claims.IsAdmin)
+			}
+			if users.user.IsAdmin {
+				t.Fatal("stored admin flag changed")
+			}
+		})
 	}
 }

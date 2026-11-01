@@ -16,7 +16,7 @@ func (s *Storage) Bootstrap(ctx context.Context, userToken, name, passwordHash s
 	if _, err = tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock(714206914)"); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, "INSERT INTO users(user_token,name,password,is_admin) VALUES($1,$2,$3,TRUE) ON CONFLICT(user_token) DO NOTHING", userToken, name, passwordHash); err != nil {
+	if _, err = tx.ExecContext(ctx, "INSERT INTO users(user_token,name,password,is_admin,position) VALUES($1,$2,$3,TRUE,(SELECT id FROM positions WHERE name='admin')) ON CONFLICT(user_token) DO NOTHING", userToken, name, passwordHash); err != nil {
 		return err
 	}
 	var admin bool
@@ -54,7 +54,7 @@ func (s *Storage) ensureFirstAdmin(ctx context.Context, firstAdminPwd string) er
 	if err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, "INSERT INTO users (user_token,name,password,is_admin) VALUES ('admin','admin',$1,TRUE)", hash); err != nil {
+	if _, err = tx.ExecContext(ctx, "INSERT INTO users (user_token,name,password,is_admin,position) VALUES ('admin','admin',$1,TRUE,(SELECT id FROM positions WHERE name='admin'))", hash); err != nil {
 		return err
 	}
 	return tx.Commit()

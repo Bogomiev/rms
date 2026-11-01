@@ -73,15 +73,15 @@ func TestSessionMigrationAndCleanup(t *testing.T) {
 			if _, err = store.GetSession(ctx, "active"); err != nil {
 				t.Fatal("active session removed", err)
 			}
-			if _, err = db.Exec("DELETE FROM users WHERE id=42"); err != nil {
-				t.Fatal(err)
+			if _, err = db.Exec("DELETE FROM users WHERE id=42"); !isErrorPg(err, ERR_ForeignKeyViolation) {
+				t.Fatalf("expected deletion restriction, got %v", err)
 			}
 			var count int
 			if err = db.QueryRow("SELECT COUNT(*) FROM sessions").Scan(&count); err != nil {
 				t.Fatal(err)
 			}
-			if count != 0 {
-				t.Fatal("sessions not deleted with user")
+			if count != 1 {
+				t.Fatal("session lost after restricted user deletion")
 			}
 		})
 	}
