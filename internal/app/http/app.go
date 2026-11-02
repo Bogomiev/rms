@@ -24,6 +24,7 @@ type App struct {
 }
 
 type Config struct {
+	TaskTimezone    string
 	AppOrigins      []string
 	TokenTTL        time.Duration
 	RefreshTokenTTL time.Duration
@@ -62,6 +63,7 @@ func New(cfg Config, deps Dependencies) *App {
 	handler.ConfigureRoles(deps.Roles)
 	handler.ConfigurePositions(deps.Positions)
 	handler.ConfigureTasks(deps.Tasks)
+	handler.ConfigureTaskTimezone(cfg.TaskTimezone)
 	tokenMaker := deps.Tokens
 	handler.ConfigureSecurity(tokenMaker)
 	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/MarketplaceData", handler.MarketplaceData)
@@ -116,12 +118,23 @@ func New(cfg Config, deps Dependencies) *App {
 	})
 	for _, kind := range []string{"task_types", "task_scheduling", "tasks", "task_status_history"} {
 		router.Route("/"+kind, func(r chi.Router) {
-			r.Use(hdlr.GetAdminMiddlewareFunc(tokenMaker, deps.Auth))
-			r.Get("/", handler.TaskResource(kind))
-			r.Get("/{id}", handler.TaskResource(kind))
-			r.Post("/", handler.TaskResource(kind))
-			r.Put("/{id}", handler.TaskResource(kind))
-			r.Delete("/{id}", handler.TaskResource(kind))
+			if kind == "tasks" {
+				r.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/current", handler.TaskCurrent)
+				for _, action := range []string{"start", "cancel", "complete"} {
+					r.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Post("/{id}/"+action, handler.TaskAction(action))
+				}
+			}
+			r.Group(func(r chi.Router) {
+				r.Use(hdlr.GetAdminMiddlewareFunc(tokenMaker, deps.Auth))
+				if kind == "task_types" {
+					r.Post("/{id}/generate", handler.TaskGenerateType)
+				}
+				r.Get("/", handler.TaskResource(kind))
+				r.Get("/{id}", handler.TaskResource(kind))
+				r.Post("/", handler.TaskResource(kind))
+				r.Put("/{id}", handler.TaskResource(kind))
+				r.Delete("/{id}", handler.TaskResource(kind))
+			})
 		})
 	}
 	address := fmt.Sprintf(":%d", cfg.Port)

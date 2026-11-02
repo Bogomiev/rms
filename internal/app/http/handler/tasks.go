@@ -5,17 +5,19 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/render"
 	"rms/internal/domain/models"
 	"rms/internal/services"
+	"rms/internal/token"
 )
 
 type TaskService interface {
 	List(context.Context, string, models.TaskFilter) ([]json.RawMessage, error)
 	ByID(context.Context, string, int64) (json.RawMessage, error)
-	Write(context.Context, string, int64, json.RawMessage) (json.RawMessage, error)
+	Write(context.Context, string, int64, json.RawMessage, int64) (json.RawMessage, error)
 	Delete(context.Context, string, int64) error
 }
 
@@ -76,7 +78,12 @@ func (h *Handler) TaskResource(k string) http.HandlerFunc {
 			if !decodeRequestLimit(w, r, &data, 2<<20) {
 				return
 			}
-			v, e := h.tasks.Write(r.Context(), k, id, data)
+			claims, ok := r.Context().Value(authKey{}).(*token.UserClaims)
+			if !ok || claims.UserID <= 0 {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+			v, e := h.tasks.Write(r.Context(), k, id, data, claims.UserID)
 			if e != nil {
 				writeServiceError(w, r, e)
 				return
@@ -93,4 +100,73 @@ func (h *Handler) TaskResource(k string) http.HandlerFunc {
 			resourceResponse(w, r, nil)
 		}
 	}
+}
+
+// Task actions use authenticated users; history ownership comes from the token.
+func (h *Handler) TaskCurrent(w http.ResponseWriter, r *http.Request) {
+	s, ok := h.tasks.(interface {
+		Current(context.Context, string, time.Time) ([]json.RawMessage, error)
+	})
+	if !ok {
+		writeServiceError(w, r, services.ErrNotFound)
+		return
+	}
+	v, e := s.Current(r.Context(), r.URL.Query().Get("store_id"), time.Now().In(h.taskLocation()))
+	if e != nil {
+		writeServiceError(w, r, e)
+		return
+	}
+	resourceResponse(w, r, v)
+}
+func (h *Handler) taskLocation() *time.Location {
+	if h.taskTimezone != nil {
+		return h.taskTimezone
+	}
+	return time.UTC
+}
+func (h *Handler) ConfigureTaskTimezone(zone string) { h.taskTimezone, _ = time.LoadLocation(zone) }
+func (h *Handler) TaskAction(action string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, ok := resourceID(w, r)
+		if !ok {
+			return
+		}
+		claims, ok := r.Context().Value(authKey{}).(*token.UserClaims)
+		if !ok || claims.UserID <= 0 {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		s, ok := h.tasks.(interface {
+			Transition(context.Context, int64, string, int64) (json.RawMessage, error)
+		})
+		if !ok {
+			writeServiceError(w, r, services.ErrNotFound)
+			return
+		}
+		v, e := s.Transition(r.Context(), id, action, claims.UserID)
+		if e != nil {
+			writeServiceError(w, r, e)
+			return
+		}
+		resourceResponse(w, r, v)
+	}
+}
+
+func (h *Handler) TaskGenerateType(w http.ResponseWriter, r *http.Request) {
+	id, ok := resourceID(w, r)
+	if !ok {
+		return
+	}
+	s, ok := h.tasks.(interface {
+		GenerateType(context.Context, int64, time.Time) error
+	})
+	if !ok {
+		writeServiceError(w, r, services.ErrNotFound)
+		return
+	}
+	if err := s.GenerateType(r.Context(), id, time.Now().In(h.taskLocation())); err != nil {
+		writeServiceError(w, r, err)
+		return
+	}
+	resourceResponse(w, r, nil)
 }

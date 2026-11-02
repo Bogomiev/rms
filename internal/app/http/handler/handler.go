@@ -28,6 +28,7 @@ type TokenVerifier interface {
 
 type Handler struct {
 	tasks          TaskService
+	taskTimezone   *time.Location
 	roles          RoleService
 	positions      PositionService
 	files          FileService

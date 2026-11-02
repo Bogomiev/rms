@@ -12,7 +12,7 @@ import (
 
 // All SQL identifiers come from this closed map, never from request input.
 var taskColumns = map[string]string{
-	"task_types":          "name,short_name,service,icon,color,color_dark,is_active,sort_order",
+	"task_types":          "name,short_name,service,icon,color,color_dark,is_active,sort_order,custom_fields",
 	"task_scheduling":     "task_type_id,frequency,period_from,period_to,days,time,is_active,stores",
 	"tasks":               "type_id,store_id,start,status,custom_fields",
 	"task_status_history": "period,task_id,user_id,status",
@@ -109,7 +109,7 @@ func (s *Storage) TaskByID(ctx context.Context, k string, id int64) (json.RawMes
 	e := s.db.QueryRowContext(ctx, "SELECT "+taskJSON(k, "t")+" FROM "+k+" t WHERE id=$1", id).Scan(&data)
 	return data, personnelError(e)
 }
-func (s *Storage) TaskWrite(ctx context.Context, k string, id int64, data json.RawMessage) (json.RawMessage, error) {
+func (s *Storage) TaskWrite(ctx context.Context, k string, id int64, data json.RawMessage, userID int64) (json.RawMessage, error) {
 	cols, ok := taskColumns[k]
 	if !ok {
 		return nil, storage.ErrInvalid
@@ -144,6 +144,43 @@ func (s *Storage) TaskWrite(ctx context.Context, k string, id int64, data json.R
 		args = append(args, id)
 	}
 	q += " RETURNING " + taskJSON(k, "t")
+	if k == "tasks" {
+		if userID <= 0 {
+			return nil, storage.ErrInvalid
+		}
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return nil, err
+		}
+		defer tx.Rollback()
+		var previousStatus string
+		if id > 0 {
+			// Serialize concurrent writes before comparing the previous status.
+			if err = tx.QueryRowContext(ctx, "SELECT status FROM tasks WHERE id=$1 FOR UPDATE", id).Scan(&previousStatus); err != nil {
+				return nil, personnelError(err)
+			}
+		}
+		var out json.RawMessage
+		if err = tx.QueryRowContext(ctx, q, args...).Scan(&out); err != nil {
+			return nil, personnelError(err)
+		}
+		var saved struct {
+			ID     int64  `json:"id"`
+			Status string `json:"status"`
+		}
+		if err = json.Unmarshal(out, &saved); err != nil {
+			return nil, err
+		}
+		if id == 0 || previousStatus != saved.Status {
+			if _, err = tx.ExecContext(ctx, "INSERT INTO task_status_history(period,task_id,user_id,status) VALUES(clock_timestamp(),$1,$2,$3)", saved.ID, userID, saved.Status); err != nil {
+				return nil, personnelError(err)
+			}
+		}
+		if err = tx.Commit(); err != nil {
+			return nil, personnelError(err)
+		}
+		return out, nil
+	}
 	var out json.RawMessage
 	e := s.db.QueryRowContext(ctx, q, args...).Scan(&out)
 	return out, personnelError(e)
@@ -151,6 +188,24 @@ func (s *Storage) TaskWrite(ctx context.Context, k string, id int64, data json.R
 func (s *Storage) TaskDelete(ctx context.Context, k string, id int64) error {
 	if _, ok := taskColumns[k]; !ok {
 		return storage.ErrInvalid
+	}
+	if k == "tasks" {
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		var taskID int64
+		if err = tx.QueryRowContext(ctx, "SELECT id FROM tasks WHERE id=$1 FOR UPDATE", id).Scan(&taskID); err != nil {
+			return personnelError(err)
+		}
+		if _, err = tx.ExecContext(ctx, "DELETE FROM task_status_history WHERE task_id=$1", id); err != nil {
+			return personnelError(err)
+		}
+		if err = affected(tx.ExecContext(ctx, "DELETE FROM tasks WHERE id=$1", id)); err != nil {
+			return err
+		}
+		return tx.Commit()
 	}
 	return affected(s.db.ExecContext(ctx, "DELETE FROM "+k+" WHERE id=$1", id))
 }

@@ -26,7 +26,7 @@ func TestTaskResourcesLifecycle(t *testing.T) {
 	write := func(k string, id int64, in any) map[string]json.RawMessage {
 		t.Helper()
 		data, _ := json.Marshal(in)
-		out, e := s.Write(ctx, k, id, data)
+		out, e := s.Write(ctx, k, id, data, 100)
 		if e != nil {
 			t.Fatalf("%s: %v", k, e)
 		}
@@ -45,7 +45,7 @@ func TestTaskResourcesLifecycle(t *testing.T) {
 		t.Fatal("icon roundtrip failed")
 	}
 	data, _ := json.Marshal(typ)
-	if _, e := s.Write(ctx, "task_types", 0, data); !errors.Is(e, services.ErrConflict) {
+	if _, e := s.Write(ctx, "task_types", 0, data, 100); !errors.Is(e, services.ErrConflict) {
 		t.Fatal("duplicate name", e)
 	}
 	typ.Name = "Renamed"
@@ -56,6 +56,26 @@ func TestTaskResourcesLifecycle(t *testing.T) {
 	schedule := models.TaskSchedulingInput{TaskTypeID: int16(typeID), Frequency: 2, PeriodFrom: "2026-11-04", PeriodTo: "2026-11-12", Days: []int16{0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0}, Time: "09:00", IsActive: true, Stores: []string{storeID}}
 	scheduled := write("task_scheduling", 0, schedule)
 	scheduleID := idOf(scheduled)
+	// Both creating without a time and clearing an existing time store SQL NULL.
+	schedule.Time = ""
+	withoutTime := write("task_scheduling", 0, schedule)
+	if string(withoutTime["time"]) != "null" {
+		t.Fatalf("missing time: %s", withoutTime["time"])
+	}
+	if err := s.Delete(ctx, "task_scheduling", idOf(withoutTime)); err != nil {
+		t.Fatal(err)
+	}
+	cleared := write("task_scheduling", scheduleID, schedule)
+	if string(cleared["time"]) != "null" {
+		t.Fatalf("cleared time: %s", cleared["time"])
+	}
+	schedule.Time = "00:00"
+	midnight := write("task_scheduling", scheduleID, schedule)
+	if string(midnight["time"]) != `"00:00:00"` {
+		t.Fatalf("midnight: %s", midnight["time"])
+	}
+	schedule.Time = "09:00"
+	write("task_scheduling", scheduleID, schedule)
 	var storedIDs []string
 	if err := json.Unmarshal(scheduled["stores"], &storedIDs); err != nil || len(storedIDs) != 1 || storedIDs[0] != storeID {
 		t.Fatal("stores array roundtrip", storedIDs, err)
@@ -88,7 +108,7 @@ func TestTaskResourcesLifecycle(t *testing.T) {
 	}
 	schedule.Stores = []string{"00000000-0000-0000-0000-000000000002"}
 	data, _ = json.Marshal(schedule)
-	if _, e := s.Write(ctx, "task_scheduling", scheduleID, data); !errors.Is(e, services.ErrConflict) {
+	if _, e := s.Write(ctx, "task_scheduling", scheduleID, data, 100); !errors.Is(e, services.ErrConflict) {
 		t.Fatal("missing array store accepted", e)
 	}
 	list, e := s.List(ctx, "task_scheduling", models.TaskFilter{Limit: 100, TypeID: typeID, StoreID: storeID})

@@ -43,3 +43,24 @@ func TestRejectInvalidTaskInput(t *testing.T) {
 		}
 	}
 }
+
+func TestScheduleOptionalTime(t *testing.T) {
+	for _, field := range []string{``, `,"time":null`, `,"time":""`, `,"time":"00:00"`, `,"time":"09:30:15"`} {
+		data := json.RawMessage(`{"task_type_id":1,"frequency":1,"period_from":"2026-11-02","period_to":"2026-11-08","days":[1,0,0,0,0,0,0]` + field + `}`)
+		out, err := normalize("task_scheduling", data)
+		if err != nil {
+			t.Fatalf("%s: %v", data, err)
+		}
+		var got map[string]any
+		if err := json.Unmarshal(out, &got); err != nil {
+			t.Fatal(err)
+		}
+		if field == `` || field == `,"time":null` || field == `,"time":""` {
+			if _, exists := got["time"]; exists {
+				t.Fatalf("empty time must be omitted for SQL NULL: %s", out)
+			}
+		} else if got["time"] == nil {
+			t.Fatalf("time lost: %s", out)
+		}
+	}
+}

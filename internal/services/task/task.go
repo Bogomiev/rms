@@ -18,7 +18,7 @@ import (
 type Storage interface {
 	TaskList(context.Context, string, models.TaskFilter) ([]json.RawMessage, error)
 	TaskByID(context.Context, string, int64) (json.RawMessage, error)
-	TaskWrite(context.Context, string, int64, json.RawMessage) (json.RawMessage, error)
+	TaskWrite(context.Context, string, int64, json.RawMessage, int64) (json.RawMessage, error)
 	TaskDelete(context.Context, string, int64) error
 }
 type Service struct{ storage Storage }
@@ -57,7 +57,7 @@ func normalize(k string, data json.RawMessage) (json.RawMessage, error) {
 		if !strict(data, &in) || strings.TrimSpace(in.Name) == "" || len(in.Icon) > 1024*1024 || !color.MatchString(in.Color) || !color.MatchString(in.ColorDark) {
 			return nil, services.ErrInvalid
 		}
-		if in.Service != "cash_collection" && in.Service != "price_print" && in.Service != "without_service" {
+		if in.Service != models.TaskServiceCashCollection && in.Service != models.TaskServicePricePrint && in.Service != models.TaskServiceWithoutService {
 			return nil, services.ErrInvalid
 		}
 		if len(in.Icon) > 0 {
@@ -66,6 +66,13 @@ func normalize(k string, data json.RawMessage) (json.RawMessage, error) {
 			default:
 				return nil, services.ErrInvalid
 			}
+		}
+		if len(in.CustomFields) == 0 || string(in.CustomFields) == "null" {
+			in.CustomFields = json.RawMessage(`{}`)
+		}
+		var fields map[string]any
+		if json.Unmarshal(in.CustomFields, &fields) != nil || fields == nil {
+			return nil, services.ErrInvalid
 		}
 		in.Name = strings.TrimSpace(in.Name)
 		v = in
@@ -89,7 +96,7 @@ func normalize(k string, data json.RawMessage) (json.RawMessage, error) {
 		}
 		in.PeriodFrom = from.Format("2006-01-02")
 		in.PeriodTo = to.Format("2006-01-02")
-		if _, e = time.Parse("15:04:05", in.Time); e != nil {
+		if _, e = time.Parse("15:04:05", in.Time); in.Time != "" && e != nil {
 			if _, e = time.Parse("15:04", in.Time); e != nil {
 				return nil, services.ErrInvalid
 			}
@@ -164,15 +171,15 @@ func (s *Service) ByID(ctx context.Context, k string, id int64) (json.RawMessage
 	v, e := s.storage.TaskByID(ctx, k, id)
 	return v, services.PersonnelError(e)
 }
-func (s *Service) Write(ctx context.Context, k string, id int64, data json.RawMessage) (json.RawMessage, error) {
-	if id < 0 {
+func (s *Service) Write(ctx context.Context, k string, id int64, data json.RawMessage, userID int64) (json.RawMessage, error) {
+	if id < 0 || (k == "tasks" && userID <= 0) {
 		return nil, services.ErrInvalid
 	}
 	in, e := normalize(k, data)
 	if e != nil {
 		return nil, e
 	}
-	v, e := s.storage.TaskWrite(ctx, k, id, in)
+	v, e := s.storage.TaskWrite(ctx, k, id, in, userID)
 	return v, services.PersonnelError(e)
 }
 func (s *Service) Delete(ctx context.Context, k string, id int64) error {

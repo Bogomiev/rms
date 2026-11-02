@@ -1,0 +1,1 @@
+ALTER TABLE task_scheduling ALTER COLUMN time DROP NOT NULL;
