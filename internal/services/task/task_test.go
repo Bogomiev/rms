@@ -1,10 +1,12 @@
 package task
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"rms/internal/domain/models"
 	"rms/internal/services"
+	"strings"
 	"testing"
 )
 
@@ -61,6 +63,88 @@ func TestScheduleOptionalTime(t *testing.T) {
 			}
 		} else if got["time"] == nil {
 			t.Fatalf("time lost: %s", out)
+		}
+	}
+}
+
+func TestTaskSVGIcons(t *testing.T) {
+	for _, service := range []string{models.TaskServiceCashCollection, models.TaskServicePricePrint, models.TaskServiceWithoutService} {
+		t.Run(service, func(t *testing.T) {
+			for _, icon := range []string{
+				`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 7h18" stroke="#fff"/></svg>`,
+				"\xef\xbb\xbf" + `<?xml version="1.0"?><!-- icon --><svg xmlns="http://www.w3.org/2000/svg"/>`,
+			} {
+				in := models.TaskTypeInput{Name: "SVG", Service: service, Icon: []byte(icon), Color: "#ffffff", ColorDark: "#000000"}
+				data, err := json.Marshal(in)
+				if err != nil {
+					t.Fatal(err)
+				}
+				out, err := normalize("task_types", data)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var got models.TaskTypeInput
+				if err := json.Unmarshal(out, &got); err != nil {
+					t.Fatal(err)
+				}
+				if !bytes.Equal(got.Icon, in.Icon) {
+					t.Fatal("SVG bytes changed")
+				}
+			}
+		})
+	}
+}
+
+func TestRejectInvalidSVGIcons(t *testing.T) {
+	for _, icon := range []string{
+		`<svg xmlns="http://www.w3.org/2000/svg">`,
+		`<html><svg xmlns="http://www.w3.org/2000/svg"/></html>`,
+		`<svg xmlns="urn:other"/>`,
+		`<svg xmlns="http://www.w3.org/2000/svg"/><svg xmlns="http://www.w3.org/2000/svg"/>`,
+		`<svg xmlns="http://www.w3.org/2000/svg"/>garbage`,
+		`<!DOCTYPE svg [<!ENTITY test "value">]><svg xmlns="http://www.w3.org/2000/svg"/>`,
+		`<svg xmlns="http://www.w3.org/2000/svg">` + strings.Repeat(" ", 1024*1024) + `</svg>`,
+		`not an image`,
+	} {
+		in := models.TaskTypeInput{Name: "SVG", Service: models.TaskServiceCashCollection, Icon: []byte(icon), Color: "#ffffff", ColorDark: "#000000"}
+		data, _ := json.Marshal(in)
+		if _, err := normalize("task_types", data); !errors.Is(err, services.ErrInvalid) {
+			t.Fatalf("invalid SVG accepted: %v", err)
+		}
+	}
+}
+
+func TestOptionalTaskColors(t *testing.T) {
+	for _, fields := range []string{
+		``,
+		`,"color":"","color_dark":""`,
+		`,"color":null,"color_dark":null`,
+		`,"color":"#ffffff","color_dark":""`,
+		`,"color":"","color_dark":"#000000"`,
+	} {
+		data := json.RawMessage(`{"name":"No background","service":"cash_collection"` + fields + `}`)
+		out, err := normalize("task_types", data)
+		if err != nil {
+			t.Fatalf("%s: %v", data, err)
+		}
+		var got models.TaskTypeInput
+		if err := json.Unmarshal(out, &got); err != nil {
+			t.Fatal(err)
+		}
+		var want models.TaskTypeInput
+		if err := json.Unmarshal(data, &want); err != nil {
+			t.Fatal(err)
+		}
+		if got.Color != want.Color || got.ColorDark != want.ColorDark {
+			t.Fatalf("colors changed: %s", out)
+		}
+	}
+	for _, field := range []string{"color", "color_dark"} {
+		for _, invalid := range []string{"red", "transparent", "#fff", " ", "#zzzzzz"} {
+			data, _ := json.Marshal(map[string]any{"name": "Invalid", "service": "cash_collection", field: invalid})
+			if _, err := normalize("task_types", data); !errors.Is(err, services.ErrInvalid) {
+				t.Fatalf("invalid %s accepted: %s", field, invalid)
+			}
 		}
 	}
 }

@@ -41,8 +41,8 @@
 
 `service`: `cash_collection`, `price_print`, `without_service`.
 `status`: `new`, `in_progress`, `completed`, `cancelled`.
-`icon`: base64 PNG/JPEG/WebP/GIF до 1 МиБ или `null`.
-`color`, `color_dark`: `#RRGGBB`.
+`icon`: base64 PNG/JPEG/WebP/GIF/SVG до 1 МиБ или `null`. SVG должен быть корректным XML с корнем `<svg xmlns="http://www.w3.org/2000/svg">`; DTD не допускается. Исходные байты сохраняются без преобразования и возвращаются в `tasks/current`.
+`color`, `color_dark`: `#RRGGBB` или пустая строка `""` (стандартный фон карточки в соответствующей теме). Пропущенные поля и `null` нормализуются в `""`. Миграция `011_optional_task_colors.sql` разрешает пустые строки в БД; существующие цвета сохраняются.
 
 `frequency`: 1–10 недель (повторная 6 в исходном перечне трактуется как 8).
 `period_from` и `period_to`: даты `YYYY-MM-DD`. Сервер и интерфейс расширяют

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"rms/internal/domain/models"
 	"rms/internal/services"
@@ -49,7 +50,20 @@ func TestTaskResourcesLifecycle(t *testing.T) {
 		t.Fatal("duplicate name", e)
 	}
 	typ.Name = "Renamed"
+	typ.Icon = []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 7h18" stroke="#fff"/></svg>`)
 	updated := write("task_types", typeID, typ)
+	if err := json.Unmarshal(updated["icon"], &gotIcon); err != nil || string(gotIcon) != string(typ.Icon) {
+		t.Fatalf("SVG update roundtrip: %s, %v", updated["icon"], err)
+	}
+	stored, err := s.ByID(ctx, "task_types", typeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved models.TaskTypeInput
+	if err := json.Unmarshal(stored, &saved); err != nil || string(saved.Icon) != string(typ.Icon) {
+		t.Fatalf("SVG not persisted: %s, %v", stored, err)
+	}
+
 	if string(updated["created_at"]) != string(created["created_at"]) || string(updated["update_at"]) == string(created["update_at"]) {
 		t.Fatal("timestamps not maintained")
 	}
@@ -116,6 +130,16 @@ func TestTaskResourcesLifecycle(t *testing.T) {
 		t.Fatal("schedule filter/atomic rollback", len(list), e)
 	}
 	taskID := idOf(write("tasks", 0, models.TaskInput{TypeID: int16(typeID), StoreID: storeID, Start: "2026-11-03T09:00:00", Status: "new", CustomFields: json.RawMessage(`{"amount":100}`)}))
+	current, err := db.TaskCurrent(ctx, storeID, time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC))
+	if err != nil || len(current) != 1 {
+		t.Fatalf("current tasks: %v, %v", current, err)
+	}
+	var currentIcon struct {
+		Icon []byte `json:"icon"`
+	}
+	if err := json.Unmarshal(current[0], &currentIcon); err != nil || string(currentIcon.Icon) != string(typ.Icon) {
+		t.Fatalf("current SVG icon: %s, %v", current[0], err)
+	}
 	historyID := idOf(write("task_status_history", 0, models.TaskHistoryInput{Period: "2026-11-03T10:00:00", TaskID: taskID, UserID: 100, Status: "in_progress"}))
 	write("task_status_history", 0, models.TaskHistoryInput{Period: "2026-11-03T11:00:00", TaskID: taskID, UserID: 100, Status: "completed"})
 	list, e = s.List(ctx, "task_status_history", models.TaskFilter{Limit: 1, TaskID: taskID, UserID: 100, PeriodTo: "2026-11-03T10:30:00"})
@@ -157,5 +181,61 @@ func TestTaskResourcesLifecycle(t *testing.T) {
 	}
 	if _, e = s.ByID(ctx, "task_types", typeID); !errors.Is(e, services.ErrNotFound) {
 		t.Fatal("deleted record found", e)
+	}
+}
+
+func TestTaskTypeOptionalColors(t *testing.T) {
+	db := authTestStorage(t)
+	ctx := context.Background()
+	service := task.New(db)
+	in := models.TaskTypeInput{Name: "Optional background", Service: models.TaskServiceCashCollection, Color: "#123456", ColorDark: "#abcdef"}
+	write := func(id int64) models.TaskTypeInput {
+		t.Helper()
+		data, err := json.Marshal(in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := service.Write(ctx, "task_types", id, data, 100)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got models.TaskTypeInput
+		if err := json.Unmarshal(out, &got); err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	write(0)
+	var id int64
+	if err := db.db.QueryRow("SELECT id FROM task_types WHERE name=$1", in.Name).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	for _, colors := range [][2]string{{"", "#abcdef"}, {"#123456", ""}, {"", ""}, {"#654321", "#fedcba"}} {
+		in.Color, in.ColorDark = colors[0], colors[1]
+		got := write(id)
+		if got.Color != in.Color || got.ColorDark != in.ColorDark {
+			t.Fatalf("write lost colors: %+v", got)
+		}
+		stored, err := service.ByID(ctx, "task_types", id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(stored, &got); err != nil {
+			t.Fatal(err)
+		}
+		if got.Color != in.Color || got.ColorDark != in.ColorDark {
+			t.Fatalf("read lost colors: %+v", got)
+		}
+	}
+	in.Name = "Created without background"
+	in.Color, in.ColorDark = "", ""
+	got := write(0)
+	if got.Color != "" || got.ColorDark != "" {
+		t.Fatalf("empty colors not saved: %+v", got)
+	}
+	for _, column := range []string{"color", "color_dark"} {
+		if _, err := db.db.Exec("UPDATE task_types SET "+column+"='invalid' WHERE id=$1", id); !isErrorPg(err, "23514") {
+			t.Fatalf("invalid %s accepted: %v", column, err)
+		}
 	}
 }

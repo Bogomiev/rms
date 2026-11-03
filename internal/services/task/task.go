@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"io"
 	"net/http"
 	"regexp"
@@ -54,7 +55,7 @@ func normalize(k string, data json.RawMessage) (json.RawMessage, error) {
 	switch k {
 	case "task_types":
 		in := models.TaskTypeInput{}
-		if !strict(data, &in) || strings.TrimSpace(in.Name) == "" || len(in.Icon) > 1024*1024 || !color.MatchString(in.Color) || !color.MatchString(in.ColorDark) {
+		if !strict(data, &in) || strings.TrimSpace(in.Name) == "" || len(in.Icon) > 1024*1024 || (in.Color != "" && !color.MatchString(in.Color)) || (in.ColorDark != "" && !color.MatchString(in.ColorDark)) {
 			return nil, services.ErrInvalid
 		}
 		if in.Service != models.TaskServiceCashCollection && in.Service != models.TaskServicePricePrint && in.Service != models.TaskServiceWithoutService {
@@ -64,7 +65,9 @@ func normalize(k string, data json.RawMessage) (json.RawMessage, error) {
 			switch http.DetectContentType(in.Icon) {
 			case "image/png", "image/jpeg", "image/gif", "image/webp":
 			default:
-				return nil, services.ErrInvalid
+				if !validSVG(in.Icon) {
+					return nil, services.ErrInvalid
+				}
 			}
 		}
 		if len(in.CustomFields) == 0 || string(in.CustomFields) == "null" {
@@ -187,4 +190,37 @@ func (s *Service) Delete(ctx context.Context, k string, id int64) error {
 		return services.ErrInvalid
 	}
 	return services.PersonnelError(s.storage.TaskDelete(ctx, k, id))
+}
+
+// validSVG checks the whole XML document, rather than trusting a MIME type or extension.
+func validSVG(data []byte) bool {
+	decoder := xml.NewDecoder(bytes.NewReader(bytes.TrimPrefix(data, []byte{0xef, 0xbb, 0xbf})))
+	depth, roots := 0, 0
+	for {
+		token, err := decoder.Token()
+		if err == io.EOF {
+			return roots == 1 && depth == 0
+		}
+		if err != nil {
+			return false
+		}
+		switch token := token.(type) {
+		case xml.StartElement:
+			if depth == 0 {
+				roots++
+				if roots != 1 || token.Name.Local != "svg" || token.Name.Space != "http://www.w3.org/2000/svg" {
+					return false
+				}
+			}
+			depth++
+		case xml.EndElement:
+			depth--
+		case xml.CharData:
+			if depth == 0 && len(bytes.TrimSpace(token)) > 0 {
+				return false
+			}
+		case xml.Directive:
+			return false
+		}
+	}
 }

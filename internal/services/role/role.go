@@ -32,7 +32,7 @@ func (s *Role) RoleByID(ctx context.Context, id int64) (models.Role, error) {
 }
 func validate(name string) error {
 	switch name {
-	case "admin", "orders", "products", "documents", "goods-receipts", "goods-distribution":
+	case "admin", "orders", "products", "documents", "goods-receipts", "goods-distribution", "cash-collection":
 		return nil
 	default:
 		return services.ErrInvalid

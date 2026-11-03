@@ -18,9 +18,9 @@ func (s *writeStorage) AddRole(context.Context, string) (int64, error) { s.calls
 func (s *writeStorage) SaveRole(context.Context, int64, string) error  { s.calls++; return s.err }
 
 func TestRoleNames(t *testing.T) {
-	for _, name := range []string{"admin", "orders", "products", "documents", "goods-receipts", "goods-distribution", "", "order", "Admin", " orders", "orders ", "custom"} {
+	for _, name := range []string{"admin", "orders", "products", "documents", "goods-receipts", "goods-distribution", "cash-collection", "", "order", "Admin", " orders", "orders ", "custom"} {
 		t.Run(name, func(t *testing.T) {
-			valid := name == "admin" || name == "orders" || name == "products" || name == "documents" || name == "goods-receipts" || name == "goods-distribution"
+			valid := name == "admin" || name == "orders" || name == "products" || name == "documents" || name == "goods-receipts" || name == "goods-distribution" || name == "cash-collection"
 			db := &writeStorage{}
 			svc := New(db)
 			_, addErr := svc.AddRole(context.Background(), name)
