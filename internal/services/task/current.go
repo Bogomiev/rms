@@ -44,3 +44,24 @@ func (s *Service) GenerateType(ctx context.Context, id int64, now time.Time) err
 	}).TaskGenerateType(ctx, now, id)
 	return services.PersonnelError(err)
 }
+
+type manualStorage interface {
+	TaskTypesAvailable(context.Context) ([]json.RawMessage, error)
+	TaskCreateManual(context.Context, int64, string, time.Time, int64) (json.RawMessage, error)
+}
+
+// AvailableTypes lists active task types for the store «+» button.
+func (s *Service) AvailableTypes(ctx context.Context) ([]json.RawMessage, error) {
+	v, e := s.storage.(manualStorage).TaskTypesAvailable(ctx)
+	return v, services.PersonnelError(e)
+}
+
+// CreateManual creates a task for a store by hand; it starts now and survives schedule reconciliation.
+func (s *Service) CreateManual(ctx context.Context, typeID int64, store string, user int64, now time.Time) (json.RawMessage, error) {
+	id, e := uuid.Parse(store)
+	if e != nil || id == uuid.Nil || typeID <= 0 || user <= 0 {
+		return nil, services.ErrInvalid
+	}
+	v, e := s.storage.(manualStorage).TaskCreateManual(ctx, typeID, id.String(), now, user)
+	return v, services.PersonnelError(e)
+}

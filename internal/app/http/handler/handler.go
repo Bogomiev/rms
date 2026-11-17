@@ -33,6 +33,7 @@ type Handler struct {
 	positions      PositionService
 	files          FileService
 	discounts      DiscountService
+	stoppers       StopperService
 	prices         PriceService
 	stocks         StockService
 	marketplace    MarketplaceService
