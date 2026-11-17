@@ -7,6 +7,7 @@ const (
 	TaskServiceCashCollection = "cash_collection"
 	TaskServicePricePrint     = "price_print"
 	TaskServiceWithoutService = "without_service"
+	TaskServiceStoppers       = "stoppers"
 )
 
 // TaskFilter contains the indexed filters supported by the task API.
@@ -50,4 +51,10 @@ type TaskHistoryInput struct {
 	TaskID int64  `json:"task_id"`
 	UserID int64  `json:"user_id"`
 	Status string `json:"status"`
+}
+
+// ManualTaskInput creates a task for a store from the store page.
+type ManualTaskInput struct {
+	TypeID  int64  `json:"type_id"`
+	StoreID string `json:"store_id"`
 }

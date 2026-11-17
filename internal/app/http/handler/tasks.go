@@ -170,3 +170,47 @@ func (h *Handler) TaskGenerateType(w http.ResponseWriter, r *http.Request) {
 	}
 	resourceResponse(w, r, nil)
 }
+
+// TaskTypesAvailable lists active task types that store users can create by hand.
+func (h *Handler) TaskTypesAvailable(w http.ResponseWriter, r *http.Request) {
+	s, ok := h.tasks.(interface {
+		AvailableTypes(context.Context) ([]json.RawMessage, error)
+	})
+	if !ok {
+		writeServiceError(w, r, services.ErrNotFound)
+		return
+	}
+	v, e := s.AvailableTypes(r.Context())
+	if e != nil {
+		writeServiceError(w, r, e)
+		return
+	}
+	resourceResponse(w, r, v)
+}
+
+// TaskCreateManual creates a task for the store by hand; the author comes from the token.
+func (h *Handler) TaskCreateManual(w http.ResponseWriter, r *http.Request) {
+	claims, ok := r.Context().Value(authKey{}).(*token.UserClaims)
+	if !ok || claims.UserID <= 0 {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var in models.ManualTaskInput
+	if !decodeRequest(w, r, &in) {
+		return
+	}
+	s, ok := h.tasks.(interface {
+		CreateManual(context.Context, int64, string, int64, time.Time) (json.RawMessage, error)
+	})
+	if !ok {
+		writeServiceError(w, r, services.ErrNotFound)
+		return
+	}
+	v, e := s.CreateManual(r.Context(), in.TypeID, in.StoreID, claims.UserID, time.Now().In(h.taskLocation()))
+	if e != nil {
+		writeServiceError(w, r, e)
+		return
+	}
+	render.Status(r, http.StatusCreated)
+	resourceResponse(w, r, v)
+}

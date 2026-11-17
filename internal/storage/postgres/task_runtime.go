@@ -89,10 +89,10 @@ func (s *Storage) taskGenerate(ctx context.Context, now time.Time, typeID int64)
  AND sc.days[(($1::date-sc.period_from) % (sc.frequency*7))+1]=1`, day, typeID); e != nil {
 		return e
 	}
-	if _, e = tx.ExecContext(ctx, `DELETE FROM task_status_history h USING tasks t WHERE h.task_id=t.id AND t.start >= $1::timestamp AND t.start < $2::timestamp AND t.status='new' AND ($3::bigint=0 OR t.type_id=$3) AND NOT EXISTS(SELECT 1 FROM desired_tasks d WHERE d.type_id=t.type_id AND d.store_id=t.store_id AND d.start=t.start AND d.custom_fields=t.custom_fields)`, day, next, typeID); e != nil {
+	if _, e = tx.ExecContext(ctx, `DELETE FROM task_status_history h USING tasks t WHERE h.task_id=t.id AND t.start >= $1::timestamp AND t.start < $2::timestamp AND t.status='new' AND NOT t.manual AND ($3::bigint=0 OR t.type_id=$3) AND NOT EXISTS(SELECT 1 FROM desired_tasks d WHERE d.type_id=t.type_id AND d.store_id=t.store_id AND d.start=t.start AND d.custom_fields=t.custom_fields)`, day, next, typeID); e != nil {
 		return e
 	}
-	if _, e = tx.ExecContext(ctx, `DELETE FROM tasks t WHERE t.start >= $1::timestamp AND t.start < $2::timestamp AND t.status='new' AND ($3::bigint=0 OR t.type_id=$3) AND NOT EXISTS(SELECT 1 FROM desired_tasks d WHERE d.type_id=t.type_id AND d.store_id=t.store_id AND d.start=t.start AND d.custom_fields=t.custom_fields)`, day, next, typeID); e != nil {
+	if _, e = tx.ExecContext(ctx, `DELETE FROM tasks t WHERE t.start >= $1::timestamp AND t.start < $2::timestamp AND t.status='new' AND NOT t.manual AND ($3::bigint=0 OR t.type_id=$3) AND NOT EXISTS(SELECT 1 FROM desired_tasks d WHERE d.type_id=t.type_id AND d.store_id=t.store_id AND d.start=t.start AND d.custom_fields=t.custom_fields)`, day, next, typeID); e != nil {
 		return e
 	}
 	var admin int64
@@ -102,11 +102,68 @@ func (s *Storage) taskGenerate(ctx context.Context, now time.Time, typeID int64)
 	_, e = tx.ExecContext(ctx, `WITH inserted AS (
  INSERT INTO tasks(type_id,store_id,start,status,custom_fields)
  SELECT d.type_id,d.store_id,d.start,'new',d.custom_fields FROM desired_tasks d
- WHERE NOT EXISTS(SELECT 1 FROM tasks t WHERE t.type_id=d.type_id AND t.store_id=d.store_id AND t.start=d.start AND t.custom_fields=d.custom_fields)
+ WHERE NOT EXISTS(SELECT 1 FROM tasks t WHERE t.type_id=d.type_id AND t.store_id=d.store_id AND t.start=d.start AND t.custom_fields=d.custom_fields AND NOT t.manual)
+ AND NOT EXISTS(SELECT 1 FROM task_types dt JOIN tasks t ON t.store_id=d.store_id JOIN task_types tt ON tt.id=t.type_id
+  WHERE dt.id=d.type_id AND dt.service='stoppers' AND tt.service='stoppers' AND t.start>=$2::timestamp AND t.start<$3::timestamp AND t.status IN ('new','in_progress'))
  RETURNING id)
- INSERT INTO task_status_history(period,task_id,user_id,status) SELECT clock_timestamp(),id,$1,'new' FROM inserted`, admin)
+ INSERT INTO task_status_history(period,task_id,user_id,status) SELECT clock_timestamp(),id,$1,'new' FROM inserted`, admin, day, next)
 	if e != nil {
 		return personnelError(e)
 	}
 	return tx.Commit()
+}
+
+// TaskTypesAvailable lists active task types a store user may create by hand.
+func (s *Storage) TaskTypesAvailable(ctx context.Context) ([]json.RawMessage, error) {
+	rows, e := s.db.QueryContext(ctx, `SELECT jsonb_build_object('id',id,'name',name,'short_name',short_name,'service',service,'color',color,'color_dark',color_dark,'icon',replace(encode(icon,'base64'),chr(10),'')) FROM task_types WHERE is_active ORDER BY sort_order,name,id`)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	out := []json.RawMessage{}
+	for rows.Next() {
+		var v json.RawMessage
+		if e = rows.Scan(&v); e != nil {
+			return nil, e
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
+// TaskCreateManual creates a task of an active type for a store starting now.
+// Manual tasks are kept by schedule reconciliation.
+func (s *Storage) TaskCreateManual(ctx context.Context, typeID int64, store string, now time.Time, user int64) (json.RawMessage, error) {
+	day, next, clock := taskDay(now)
+	tx, e := s.db.BeginTx(ctx, nil)
+	if e != nil {
+		return nil, e
+	}
+	defer tx.Rollback()
+	// Locking the store serializes manual creation, so a store has one active «Стопперы» task a day.
+	var locked string
+	if e = tx.QueryRowContext(ctx, "SELECT id FROM stores WHERE id=$1::uuid FOR UPDATE", store).Scan(&locked); e != nil {
+		return nil, personnelError(e)
+	}
+	var busy bool
+	if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM task_types nt JOIN tasks t ON t.store_id=$2::uuid JOIN task_types tt ON tt.id=t.type_id
+ WHERE nt.id=$1 AND nt.service='stoppers' AND tt.service='stoppers' AND t.start>=$3::timestamp AND t.start<$4::timestamp AND t.status IN ('new','in_progress'))`, typeID, store, day, next).Scan(&busy); e != nil {
+		return nil, e
+	}
+	if busy {
+		return nil, storage.ErrConflict
+	}
+	var id int64
+	if e = tx.QueryRowContext(ctx, `INSERT INTO tasks(type_id,store_id,start,status,custom_fields,manual)
+ SELECT id,$2::uuid,$3::timestamp,'new',custom_fields,true FROM task_types WHERE id=$1 AND is_active RETURNING id`, typeID, store, clock).Scan(&id); e != nil {
+		return nil, personnelError(e)
+	}
+	if _, e = tx.ExecContext(ctx, "INSERT INTO task_status_history(period,task_id,user_id,status) VALUES(clock_timestamp(),$1,$2,'new')", id, user); e != nil {
+		return nil, personnelError(e)
+	}
+	var out json.RawMessage
+	if e = tx.QueryRowContext(ctx, "SELECT to_jsonb(t) FROM tasks t WHERE id=$1", id).Scan(&out); e != nil {
+		return nil, e
+	}
+	return out, personnelError(tx.Commit())
 }

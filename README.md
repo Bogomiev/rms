@@ -50,6 +50,14 @@ make install
 | `GET /stores` | С access-cookie: список магазинов с метаданными пагинации |
 | `GET /users/?limit=50&offset=0` | С access-cookie: список пользователей, лимит 1–100 |
 | `POST /users/` | Только администратор: JSON `user_token`, `name`, `password`, `is_admin` |
+| `GET /stoppers/` | Администратор или роль `manager`: справочник стопперов (см. [docs/stoppers.md](docs/stoppers.md)) |
+| `POST /stoppers/`, `PUT /stoppers/{id}`, `DELETE /stoppers/{id}` | Администратор или роль `manager`: JSON `name`, `color`; удаление оставляет позиции без стоппера |
+| `GET /stoppers/positions?from=…&to=…&store_id=…` | Администратор или роль `manager`: акционные и ручные позиции за окно дат, цены до 4 магазинов |
+| `POST /stoppers/positions` | Администратор или роль `manager`: ручная позиция — `product_id`, `stopper_id`, `from` |
+| `PUT /stoppers/positions/stopper`, `PUT /stoppers/positions/period` | Администратор или роль `manager`: стоппер или период для списка позиций |
+| `GET /stoppers/products?q=…` | Администратор или роль `manager`: поиск товара для ручного добавления |
+| `GET /tasks/types`, `POST /tasks/manual` | С access-cookie: активные типы заданий и создание задания для магазина вручную |
+| `GET /tasks/{id}/stoppers`, `PUT /tasks/{id}/stoppers/check` | С access-cookie: экран задания «Стопперы» и отметки магазина |
 
 `user_token` — уникальная непустая строка до 255 байт, идентификатор для входа вместе с паролем. В Go используется `UserToken`, в SQL и JSON — `user_token`. Сессии связаны с пользователем через `user_id`.
 

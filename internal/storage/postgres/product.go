@@ -20,6 +20,11 @@ const productReadColumns = productColumns + `,COALESCE((SELECT jsonb_agg(
  jsonb_build_object('barcode',b.barcode,'unit',b.unit,'ratio',b.ratio,'isBase',b.is_base)
  ORDER BY b.position) FROM product_barcodes b WHERE b.product_id=products.id),'[]'::jsonb)`
 
+// escapeLike makes user text match literally inside a LIKE pattern.
+func escapeLike(value string) string {
+	return strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(value)
+}
+
 func scanProduct(row interface{ Scan(...any) error }) (*models.Product, error) {
 	var v models.Product
 	var barcodes, images []byte
@@ -106,7 +111,7 @@ func (s *Storage) SearchProducts(ctx context.Context, f models.ProductFilter, li
 		args = append(args, f.Code)
 	case f.Name != "":
 		query += " WHERE name ILIKE $1"
-		args = append(args, "%"+strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(f.Name)+"%")
+		args = append(args, "%"+escapeLike(f.Name)+"%")
 	}
 	query += " ORDER BY id"
 	if limit > 0 {

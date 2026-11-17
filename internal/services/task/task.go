@@ -58,7 +58,7 @@ func normalize(k string, data json.RawMessage) (json.RawMessage, error) {
 		if !strict(data, &in) || strings.TrimSpace(in.Name) == "" || len(in.Icon) > 1024*1024 || (in.Color != "" && !color.MatchString(in.Color)) || (in.ColorDark != "" && !color.MatchString(in.ColorDark)) {
 			return nil, services.ErrInvalid
 		}
-		if in.Service != models.TaskServiceCashCollection && in.Service != models.TaskServicePricePrint && in.Service != models.TaskServiceWithoutService {
+		if in.Service != models.TaskServiceCashCollection && in.Service != models.TaskServicePricePrint && in.Service != models.TaskServiceWithoutService && in.Service != models.TaskServiceStoppers {
 			return nil, services.ErrInvalid
 		}
 		if len(in.Icon) > 0 {

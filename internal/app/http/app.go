@@ -39,6 +39,7 @@ type Dependencies struct {
 	Positions   hdlr.PositionService
 	Files       hdlr.FileService
 	Discounts   hdlr.DiscountService
+	Stoppers    hdlr.StopperService
 	Prices      hdlr.PriceService
 	Stocks      hdlr.StockService
 	ProductInfo hdlr.ProductInfoService
@@ -58,6 +59,7 @@ func New(cfg Config, deps Dependencies) *App {
 	handler.Configure(deps.Products, deps.Stores, cfg.TokenTTL, cfg.RefreshTokenTTL)
 	handler.ConfigurePriceStock(deps.Prices, deps.Stocks)
 	handler.ConfigureDiscounts(deps.Discounts)
+	handler.ConfigureStoppers(deps.Stoppers)
 	handler.ConfigureProductInfo(deps.ProductInfo, deps.Marketplace)
 	handler.ConfigureFiles(deps.Files)
 	handler.ConfigureRoles(deps.Roles)
@@ -74,6 +76,19 @@ func New(cfg Config, deps Dependencies) *App {
 	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/stores", handler.Stores)
 
 	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/discounts", handler.Discounts)
+	// Stopper management is a separate service for admins and users with the manager role.
+	router.Route("/stoppers", func(r chi.Router) {
+		r.Use(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth), handler.StopperManagerOnly)
+		r.Get("/", handler.StopperList)
+		r.Post("/", handler.CreateStopper)
+		r.Put("/{id}", handler.SaveStopper)
+		r.Delete("/{id}", handler.DeleteStopper)
+		r.Get("/positions", handler.StopperPositions)
+		r.Post("/positions", handler.AddStopperPosition)
+		r.Put("/positions/stopper", handler.SetPositionsStopper)
+		r.Put("/positions/period", handler.SetPositionsPeriod)
+		r.Get("/products", handler.StopperProducts)
+	})
 	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/prices", handler.Prices)
 	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/stocks/{store_id}", handler.Stocks)
 
@@ -120,6 +135,10 @@ func New(cfg Config, deps Dependencies) *App {
 		router.Route("/"+kind, func(r chi.Router) {
 			if kind == "tasks" {
 				r.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/current", handler.TaskCurrent)
+				r.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/types", handler.TaskTypesAvailable)
+				r.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Post("/manual", handler.TaskCreateManual)
+				r.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/{id}/stoppers", handler.StopperTask)
+				r.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Put("/{id}/stoppers/check", handler.SetStopperTaskCheck)
 				for _, action := range []string{"start", "cancel", "complete"} {
 					r.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Post("/{id}/"+action, handler.TaskAction(action))
 				}
