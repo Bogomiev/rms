@@ -3,6 +3,7 @@ package product
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/google/uuid"
 	"math/big"
@@ -51,19 +52,38 @@ func (s *ProductService) ProductInfo(ctx context.Context, store uuid.UUID, f mod
 	for i, p := range products {
 		ids[i] = p.ID
 	}
-	stage = "product prices and stocks"
-	values, err := s.info.ProductValues(ctx, store, ids, types, s.timezone)
-	if err != nil {
-		return nil, err
-	}
 	stage = "1C product info"
 	if s.onecInfo == nil {
 		return nil, fmt.Errorf("product info service not configured")
 	}
-	onecInfo, err := s.onecInfo.GetProductInfo(ctx, store, ids)
-	if err != nil {
-		return nil, err
+	parallelCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	type valuesResult struct {
+		values map[uuid.UUID]models.ProductValues
+		err    error
 	}
+	valuesDone := make(chan valuesResult, 1)
+	go func() {
+		values, e := s.info.ProductValues(parallelCtx, store, ids, types, s.timezone)
+		if e != nil {
+			cancel()
+		}
+		valuesDone <- valuesResult{values, e}
+	}()
+	onecInfo, onecErr := s.onecInfo.GetProductInfo(parallelCtx, store, ids)
+	if onecErr != nil {
+		cancel()
+	}
+	loaded := <-valuesDone
+	// Prefer the originating error over cancellation caused by the other branch.
+	if loaded.err != nil && !(errors.Is(loaded.err, context.Canceled) && onecErr != nil) {
+		stage = "product prices and stocks"
+		return nil, loaded.err
+	}
+	if onecErr != nil {
+		return nil, onecErr
+	}
+	values := loaded.values
 	byProduct := make(map[uuid.UUID][]models.Receipt)
 	for _, receipt := range onecInfo.Receipts {
 		if receipt.StoreID == store {

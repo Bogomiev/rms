@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"rms/internal/domain/models"
@@ -143,5 +145,76 @@ func TestStockDays(t *testing.T) {
 		if got := stockDays(tc.stock, tc.sales); got != tc.want {
 			t.Errorf("stockDays(%s, %s) = %d, want %d", tc.stock, tc.sales, got, tc.want)
 		}
+	}
+}
+
+type parallelInfoStub struct {
+	infoStub
+	values func(context.Context) (map[uuid.UUID]models.ProductValues, error)
+	source func(context.Context) (*models.OneCProductInfo, error)
+}
+
+func (s *parallelInfoStub) ProductValues(ctx context.Context, _ uuid.UUID, _ []uuid.UUID, _ []uuid.UUID, _ string) (map[uuid.UUID]models.ProductValues, error) {
+	return s.values(ctx)
+}
+func (s *parallelInfoStub) GetProductInfo(ctx context.Context, _ uuid.UUID, _ []uuid.UUID) (*models.OneCProductInfo, error) {
+	return s.source(ctx)
+}
+
+func TestProductInfoParallelAndCancellation(t *testing.T) {
+	for _, fail := range []string{"", "database", "onec"} {
+		t.Run("failure="+fail, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			valuesStarted, sourceStarted := make(chan struct{}), make(chan struct{})
+			failure := errors.New("upstream failed")
+			stub := &parallelInfoStub{infoStub: infoStub{products: []models.Product{{ID: uuid.New()}}}}
+			stub.values = func(ctx context.Context) (map[uuid.UUID]models.ProductValues, error) {
+				close(valuesStarted)
+				select {
+				case <-sourceStarted:
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+				if fail == "database" {
+					return nil, failure
+				}
+				if fail == "onec" {
+					<-ctx.Done()
+					return nil, ctx.Err()
+				}
+				return nil, nil
+			}
+			stub.source = func(ctx context.Context) (*models.OneCProductInfo, error) {
+				close(sourceStarted)
+				select {
+				case <-valuesStarted:
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+				if fail == "onec" {
+					return nil, failure
+				}
+				if fail == "database" {
+					<-ctx.Done()
+					return nil, ctx.Err()
+				}
+				return &models.OneCProductInfo{}, nil
+			}
+			service := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
+			service.ConfigureInfo(stub, stub, "UTC")
+			service.ConfigureProductInfo(stub)
+			got, err := service.ProductInfo(ctx, uuid.New(), models.ProductFilter{})
+			if fail == "" {
+				if err != nil || len(got) != 1 {
+					t.Fatalf("result=%v error=%v", got, err)
+				}
+			} else if !errors.Is(err, failure) {
+				t.Fatalf("originating error lost: %v", err)
+			}
+			if ctx.Err() != nil {
+				t.Fatal("parallel calls did not complete before deadline")
+			}
+		})
 	}
 }

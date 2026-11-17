@@ -21,11 +21,15 @@ var (
 )
 
 type Store interface {
-	List(context.Context) ([]models.File, error)
+	List(context.Context, *string, bool) ([]models.File, error)
+	Get(context.Context, string) (models.File, error)
+	Find(context.Context, *string, string, bool) (models.File, error)
+	HasChildren(context.Context, string) (bool, error)
 	Save(context.Context, models.File) error
 	Delete(context.Context, string) error
 }
 type Repository interface {
+	View(context.Context, func(Store) error) error
 	Transaction(context.Context, func(Store) error) error
 }
 type Objects interface {
@@ -61,59 +65,33 @@ func (s *Service) List(ctx context.Context, parent *string, deleted bool) (out [
 		parent = &v
 	}
 	out = []models.File{}
-	err = s.db.Transaction(ctx, func(db Store) error {
-		all, e := db.List(ctx)
-		if e != nil {
-			return e
-		}
-		for _, f := range all {
-			if sameParent(f.ParentID, parent) && (deleted || f.DeletedAt == nil) {
-				out = append(out, f)
-			}
-		}
-		return nil
+	err = s.db.View(ctx, func(db Store) error {
+		var e error
+		out, e = db.List(ctx, parent, deleted)
+		return e
 	})
 	return
 }
 func sameParent(a, b *string) bool { return a == nil && b == nil || a != nil && b != nil && *a == *b }
-func find(all []models.File, id string) (models.File, error) {
-	for _, f := range all {
-		if f.ID == id {
-			return f, nil
-		}
-	}
-	return models.File{}, ErrNotFound
-}
 func (s *Service) Get(ctx context.Context, id, path string) (out models.File, err error) {
-	err = s.db.Transaction(ctx, func(db Store) error {
-		all, e := db.List(ctx)
-		if e != nil {
-			return e
-		}
+	err = s.db.View(ctx, func(db Store) error {
 		if id != "" {
-			parsed, parseErr := uuid.Parse(id)
-			if parseErr != nil {
+			parsed, e := uuid.Parse(id)
+			if e != nil {
 				return ErrInvalid
 			}
-			id = parsed.String()
-			out, e = find(all, id)
+			out, e = db.Get(ctx, parsed.String())
 			return e
 		}
 		var parent *string
 		for _, part := range strings.Split(strings.Trim(path, "/"), "/") {
-			found := false
-			for _, f := range all {
-				if f.Name == part && sameParent(f.ParentID, parent) && f.DeletedAt == nil {
-					out = f
-					v := f.ID
-					parent = &v
-					found = true
-					break
-				}
+			f, e := db.Find(ctx, parent, part, false)
+			if e != nil {
+				return e
 			}
-			if !found {
-				return ErrNotFound
-			}
+			out = f
+			v := f.ID
+			parent = &v
 		}
 		return nil
 	})
@@ -137,11 +115,10 @@ func (s *Service) Write(ctx context.Context, in Input, update bool) (out models.
 		return out, ErrInvalid
 	}
 	err = s.db.Transaction(ctx, func(db Store) error {
-		all, e := db.List(ctx)
-		if e != nil {
-			return e
+		old, exists := db.Get(ctx, in.ID)
+		if exists != nil && !errors.Is(exists, ErrNotFound) {
+			return exists
 		}
-		old, exists := find(all, in.ID)
 		hasOld := exists == nil
 		if update && !hasOld {
 			return ErrNotFound
@@ -155,7 +132,7 @@ func (s *Service) Write(ctx context.Context, in Input, update bool) (out models.
 			}
 		}
 		if in.ParentID != nil {
-			p, e := find(all, *in.ParentID)
+			p, e := db.Get(ctx, *in.ParentID)
 			if e != nil || p.IsFile || p.DeletedAt != nil {
 				return ErrInvalid
 			}
@@ -166,16 +143,18 @@ func (s *Service) Write(ctx context.Context, in Input, update bool) (out models.
 				if p.ParentID == nil {
 					break
 				}
-				p, e = find(all, *p.ParentID)
+				p, e = db.Get(ctx, *p.ParentID)
 				if e != nil {
 					return ErrInvalid
 				}
 			}
 		}
-		for _, f := range all {
-			if f.ID != in.ID && f.Name == in.Name && sameParent(f.ParentID, in.ParentID) {
-				return ErrConflict
-			}
+		sibling, e := db.Find(ctx, in.ParentID, in.Name, true)
+		if e != nil && !errors.Is(e, ErrNotFound) {
+			return e
+		}
+		if e == nil && sibling.ID != in.ID {
+			return ErrConflict
 		}
 		if !in.IsFile && in.Content != nil {
 			return ErrInvalid
@@ -228,18 +207,16 @@ func (s *Service) Delete(ctx context.Context, id string, marked ...bool) error {
 	id = parsed.String()
 	soft := len(marked) == 0 || marked[0]
 	return s.db.Transaction(ctx, func(db Store) error {
-		all, e := db.List(ctx)
+		f, e := db.Get(ctx, id)
 		if e != nil {
 			return e
 		}
-		f, e := find(all, id)
+		hasChildren, e := db.HasChildren(ctx, id)
 		if e != nil {
 			return e
 		}
-		for _, child := range all {
-			if child.ParentID != nil && *child.ParentID == id {
-				return ErrConflict
-			}
+		if hasChildren {
+			return ErrConflict
 		}
 		if soft {
 			now := time.Now().UTC()

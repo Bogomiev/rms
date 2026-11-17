@@ -21,7 +21,17 @@ func (m *memory) Transaction(ctx context.Context, fn func(Store) error) error {
 	}
 	return e
 }
-func (m *memory) List(context.Context) ([]models.File, error) { return m.rows, nil }
+func (m *memory) View(ctx context.Context, fn func(Store) error) error  { return fn(m) }
+func (m *memory) Get(_ context.Context, id string) (models.File, error) { return find(m.rows, id) }
+func (m *memory) List(_ context.Context, parent *string, deleted bool) ([]models.File, error) {
+	out := []models.File{}
+	for _, f := range m.rows {
+		if sameParent(f.ParentID, parent) && (deleted || f.DeletedAt == nil) {
+			out = append(out, f)
+		}
+	}
+	return out, nil
+}
 func (m *memory) Save(_ context.Context, f models.File) error {
 	if m.fail {
 		return errors.New("database failed")
@@ -217,4 +227,27 @@ func TestHardDeleteRetriesAfterDatabaseFailure(t *testing.T) {
 	if len(db.rows) != 0 {
 		t.Fatal("retry did not remove metadata")
 	}
+}
+
+func find(all []models.File, id string) (models.File, error) {
+	for _, f := range all {
+		if f.ID == id {
+			return f, nil
+		}
+	}
+	return models.File{}, ErrNotFound
+}
+
+func (m *memory) Find(ctx context.Context, parent *string, name string, deleted bool) (models.File, error) {
+	rows, _ := m.List(ctx, parent, deleted)
+	for _, f := range rows {
+		if f.Name == name {
+			return f, nil
+		}
+	}
+	return models.File{}, ErrNotFound
+}
+func (m *memory) HasChildren(ctx context.Context, id string) (bool, error) {
+	rows, _ := m.List(ctx, &id, true)
+	return len(rows) > 0, nil
 }
