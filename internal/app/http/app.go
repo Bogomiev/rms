@@ -72,10 +72,10 @@ func New(cfg Config, deps Dependencies) *App {
 	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/product_info", handler.ProductInfo)
 	router.Get("/usertokenvalid", handler.UserTokenValid)
 	router.Get("/version", handler.Version)
+	router.Get("/discounts", handler.Discounts)
 	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/products", handler.Products)
 	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/stores", handler.Stores)
 
-	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/discounts", handler.Discounts)
 	// Stopper management is a separate service for admins and users with the manager role.
 	router.Route("/stoppers", func(r chi.Router) {
 		r.Use(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth), handler.StopperManagerOnly)

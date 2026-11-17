@@ -239,7 +239,7 @@ Timeout каждой задачи — 15 минут.
 
 ### XML акций
 
-Авторизованный `GET /discounts` возвращает файл `discounts.xml`
+Публичный `GET /discounts` без токена доступа возвращает файл `discounts.xml`
 (`application/xml; charset=utf-8`). Все магазины и действующие промо собираются
 одним SQL-запросом: `stores.price_type_promo = prices.price_type`.
 Выбирается последняя запись на текущий момент в `scheduler.timezone`,
