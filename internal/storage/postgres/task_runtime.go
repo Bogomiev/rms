@@ -86,7 +86,8 @@ func (s *Storage) taskGenerate(ctx context.Context, now time.Time, typeID int64)
  SELECT DISTINCT tt.id AS type_id, st.store_id, $1::date + COALESCE(sc.time,'00:00'::time) AS start, tt.custom_fields
  FROM task_scheduling sc JOIN task_types tt ON tt.id=sc.task_type_id CROSS JOIN LATERAL unnest(sc.stores) st(store_id)
  WHERE ($2::bigint=0 OR tt.id=$2) AND sc.is_active AND tt.is_active AND $1::date BETWEEN sc.period_from AND sc.period_to
- AND sc.days[(($1::date-sc.period_from) % (sc.frequency*7))+1]=1`, day, typeID); e != nil {
+ AND sc.days[(($1::date-sc.period_from) % (sc.frequency*7))+1]=1
+ AND (tt.service<>'stoppers' OR `+stopperTaskWork("st.store_id", "$1::date")+`)`, day, typeID); e != nil {
 		return e
 	}
 	if _, e = tx.ExecContext(ctx, `DELETE FROM task_status_history h USING tasks t WHERE h.task_id=t.id AND t.start >= $1::timestamp AND t.start < $2::timestamp AND t.status='new' AND NOT t.manual AND ($3::bigint=0 OR t.type_id=$3) AND NOT EXISTS(SELECT 1 FROM desired_tasks d WHERE d.type_id=t.type_id AND d.store_id=t.store_id AND d.start=t.start AND d.custom_fields=t.custom_fields)`, day, next, typeID); e != nil {
@@ -114,8 +115,12 @@ func (s *Storage) taskGenerate(ctx context.Context, now time.Time, typeID int64)
 }
 
 // TaskTypesAvailable lists active task types a store user may create by hand.
-func (s *Storage) TaskTypesAvailable(ctx context.Context) ([]json.RawMessage, error) {
-	rows, e := s.db.QueryContext(ctx, `SELECT jsonb_build_object('id',id,'name',name,'short_name',short_name,'service',service,'color',color,'color_dark',color_dark,'icon',replace(encode(icon,'base64'),chr(10),'')) FROM task_types WHERE is_active ORDER BY sort_order,name,id`)
+// available is false for «Стопперы» when the store has nothing to check or remove today;
+// without a store every type is available.
+func (s *Storage) TaskTypesAvailable(ctx context.Context, store string, now time.Time) ([]json.RawMessage, error) {
+	day, _, _ := taskDay(now)
+	rows, e := s.db.QueryContext(ctx, `SELECT jsonb_build_object('id',id,'name',name,'short_name',short_name,'service',service,'color',color,'color_dark',color_dark,'icon',replace(encode(icon,'base64'),chr(10),''),
+ 'available',service<>'stoppers' OR $1='' OR `+stopperTaskWork("NULLIF($1,'')::uuid", "$2::date")+`) FROM task_types WHERE is_active ORDER BY sort_order,name,id`, store, day)
 	if e != nil {
 		return nil, e
 	}
@@ -151,6 +156,14 @@ func (s *Storage) TaskCreateManual(ctx context.Context, typeID int64, store stri
 		return nil, e
 	}
 	if busy {
+		return nil, storage.ErrConflict
+	}
+	// A «Стопперы» task with nothing to check or remove today is not created.
+	var empty bool
+	if e = tx.QueryRowContext(ctx, `SELECT service='stoppers' AND NOT `+stopperTaskWork("$2::uuid", "$3::date")+` FROM task_types WHERE id=$1`, typeID, store, day).Scan(&empty); e != nil {
+		return nil, personnelError(e)
+	}
+	if empty {
 		return nil, storage.ErrConflict
 	}
 	var id int64

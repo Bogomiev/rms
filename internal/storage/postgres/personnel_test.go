@@ -48,7 +48,8 @@ func TestPersonnelLifecycle(t *testing.T) {
 	}
 
 	roleList, err := roles.RoleList(ctx, models.UserPage{Limit: 50})
-	if err != nil || len(roleList) != 6 || roleList[len(roleList)-1].Name != "orders" {
+	// Migrations seed five roles, including manager for stoppers; the test adds orders.
+	if err != nil || len(roleList) != 7 || roleList[len(roleList)-1].Name != "orders" {
 		t.Fatal("roles list", roleList, err)
 	}
 	roleRecord, err := roles.RoleByID(ctx, roleID)
@@ -56,7 +57,8 @@ func TestPersonnelLifecycle(t *testing.T) {
 		t.Fatal("role record", roleRecord, err)
 	}
 	positionList, err := positions.PositionList(ctx, models.UserPage{Limit: 50})
-	if err != nil || len(positionList) != 4 || len(positionList[2].Roles) != 1 || len(positionList[3].Roles) != 1 {
+	// Seeded positions: admin, seller and manager; the test adds Cashier and Manager.
+	if err != nil || len(positionList) != 5 || len(positionList[3].Roles) != 1 || len(positionList[4].Roles) != 1 {
 		t.Fatal("positions list", positionList, err)
 	}
 	if err = roles.DeleteRole(ctx, roleID); !errors.Is(err, services.ErrConflict) {

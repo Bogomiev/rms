@@ -17,7 +17,8 @@ type manualStub struct {
 	err   error
 }
 
-func (s *manualStub) TaskTypesAvailable(context.Context) ([]json.RawMessage, error) {
+func (s *manualStub) TaskTypesAvailable(_ context.Context, store string, _ time.Time) ([]json.RawMessage, error) {
+	s.store, s.calls = store, s.calls+1
 	return []json.RawMessage{}, s.err
 }
 func (s *manualStub) TaskCreateManual(_ context.Context, _ int64, store string, _ time.Time, _ int64) (json.RawMessage, error) {
@@ -46,6 +47,25 @@ func TestCreateManualValidation(t *testing.T) {
 	stub.err = storage.ErrNotFound
 	if _, err := s.CreateManual(context.Background(), 9, "018e166f-4220-11f1-95f7-00155d1a2b22", 3, time.Now()); !errors.Is(err, services.ErrNotFound) {
 		t.Fatal(err)
+	}
+}
+func TestAvailableTypesStore(t *testing.T) {
+	stub := &manualStub{}
+	s := New(stub)
+	if _, err := s.AvailableTypes(context.Background(), "018E166F-4220-11F1-95F7-00155D1A2B22", time.Now()); err != nil || stub.store != "018e166f-4220-11f1-95f7-00155d1a2b22" {
+		t.Fatal(err, stub.store)
+	}
+	if _, err := s.AvailableTypes(context.Background(), "", time.Now()); err != nil || stub.store != "" {
+		t.Fatal(err, stub.store)
+	}
+	stub.calls = 0
+	for _, store := range []string{"bad", "00000000-0000-0000-0000-000000000000"} {
+		if _, err := s.AvailableTypes(context.Background(), store, time.Now()); !errors.Is(err, services.ErrInvalid) {
+			t.Fatal(store, err)
+		}
+	}
+	if stub.calls != 0 {
+		t.Fatal("invalid store reached storage")
 	}
 }
 func TestStoppersTaskTypeIsValid(t *testing.T) {

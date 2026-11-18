@@ -24,6 +24,7 @@ type Auth struct {
 	refreshTokenTTL    time.Duration
 	maxLoginAttempts   int
 	loginBlockDuration time.Duration
+	codes              loginCodes
 }
 
 var (
@@ -131,21 +132,28 @@ func (a *Auth) Login(
 	if err != nil {
 		return "", "", "", nil, fmt.Errorf("%s: %w", op, err)
 	}
-	isAdmin := details.HasAdminAccess()
 	log.Info("user logged in successfully")
 
+	sessionID, accessToken, refreshToken, err := a.startSession(ctx, user, details.HasAdminAccess())
+	if err != nil {
+		return "", "", "", nil, fmt.Errorf("%s: %w", op, err)
+	}
+	return sessionID, accessToken, refreshToken, &user, nil
+}
+
+// startSession issues refresh and access tokens for the user and stores the new session.
+func (a *Auth) startSession(ctx context.Context, user models.User, isAdmin bool) (string, string, string, error) {
+	log := a.log.With(slog.String("op", "Auth.startSession"))
 	refreshToken, refreshClaims, err := a.tokenMaker.CreateToken(user.ID, user.UserToken, isAdmin, a.refreshTokenTTL, token.Refresh)
 	if err != nil {
 		log.Error("failed to generate refresh token", sl.Err(err))
-
-		return "", "", "", nil, fmt.Errorf("%s: %w", op, err)
+		return "", "", "", err
 	}
 
 	accessToken, _, err := a.tokenMaker.CreateToken(user.ID, user.UserToken, isAdmin, a.tokenTTL, token.Access, refreshClaims.ID)
 	if err != nil {
 		log.Error("failed to generate token", sl.Err(err))
-
-		return "", "", "", nil, fmt.Errorf("%s: %w", op, err)
+		return "", "", "", err
 	}
 
 	ss := &models.Session{
@@ -159,10 +167,9 @@ func (a *Auth) Login(
 	session, err := a.sessionStorage.CreateSession(ctx, ss)
 	if err != nil {
 		log.Error("error creating session", sl.Err(err))
-		return "", "", "", nil, fmt.Errorf("%s: %w", op, err)
+		return "", "", "", err
 	}
-
-	return session.ID, accessToken, refreshToken, &user, nil
+	return session.ID, accessToken, refreshToken, nil
 }
 
 func (a *Auth) Logout(ctx context.Context, refreshToken string) error {

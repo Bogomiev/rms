@@ -177,12 +177,68 @@ func TestStopperTaskForStore(t *testing.T) {
 	if _, err = s.TaskCreateManual(ctx, typeID, store.ID.String(), time.Date(2026, 11, 10, 11, 0, 0, 0, time.UTC), user); !errors.Is(err, storage.ErrConflict) {
 		t.Fatal("second active task:", err)
 	}
-	// Schedule reconciliation keeps tasks created by hand.
+	// Schedule reconciliation keeps tasks created by hand; generated tasks are authored by admin.
+	if _, err = s.db.ExecContext(ctx, "INSERT INTO users(name,user_token,password) VALUES('admin','admin','x')"); err != nil {
+		t.Fatal(err)
+	}
 	if err = s.TaskGenerate(ctx, time.Date(2026, 11, 10, 10, 0, 0, 0, time.UTC)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = s.StopperTask(ctx, created.ID, "2026-11-10", "UTC"); err != nil {
 		t.Fatal("manual task removed:", err)
+	}
+	// A store with nothing to check or remove gets no «Стопперы» task, by hand or by schedule.
+	empty := models.Store{ID: uuid.New(), PriceType: uuid.New(), PriceTypePromo: uuid.New()}
+	if _, err = s.AddStore(ctx, &empty); err != nil {
+		t.Fatal(err)
+	}
+	noon := time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC)
+	if _, err = s.TaskCreateManual(ctx, typeID, empty.ID.String(), noon, user); !errors.Is(err, storage.ErrConflict) {
+		t.Fatal("empty stoppers task:", err)
+	}
+	for _, tc := range []struct {
+		store     string
+		available bool
+	}{{empty.ID.String(), false}, {other.ID.String(), true}, {"", true}} {
+		types, err := s.TaskTypesAvailable(ctx, tc.store, noon)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, raw := range types {
+			var v struct {
+				ID        int64 `json:"id"`
+				Available bool  `json:"available"`
+			}
+			if err = json.Unmarshal(raw, &v); err != nil {
+				t.Fatal(err)
+			}
+			if v.ID == typeID {
+				found = true
+				if v.Available != tc.available {
+					t.Fatalf("store %q: available %v", tc.store, v.Available)
+				}
+			}
+		}
+		if !found {
+			t.Fatal("stoppers type not listed")
+		}
+	}
+	if _, err = s.db.ExecContext(ctx, `INSERT INTO task_scheduling(task_type_id,frequency,period_from,period_to,days,time,stores)
+ VALUES($1,1,'2026-11-09','2026-11-15','{1,1,1,1,1,1,1}','08:00',ARRAY[$2::uuid,$3::uuid])`, typeID, other.ID, empty.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.TaskGenerate(ctx, noon); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		store uuid.UUID
+		tasks int
+	}{{other.ID, 1}, {empty.ID, 0}} {
+		var n int
+		if err = s.db.QueryRowContext(ctx, "SELECT count(*) FROM tasks WHERE store_id=$1 AND type_id=$2", tc.store, typeID).Scan(&n); err != nil || n != tc.tasks {
+			t.Fatal(tc.store, n, err)
+		}
 	}
 }
 

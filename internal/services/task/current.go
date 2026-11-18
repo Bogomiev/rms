@@ -46,13 +46,21 @@ func (s *Service) GenerateType(ctx context.Context, id int64, now time.Time) err
 }
 
 type manualStorage interface {
-	TaskTypesAvailable(context.Context) ([]json.RawMessage, error)
+	TaskTypesAvailable(context.Context, string, time.Time) ([]json.RawMessage, error)
 	TaskCreateManual(context.Context, int64, string, time.Time, int64) (json.RawMessage, error)
 }
 
-// AvailableTypes lists active task types for the store «+» button.
-func (s *Service) AvailableTypes(ctx context.Context) ([]json.RawMessage, error) {
-	v, e := s.storage.(manualStorage).TaskTypesAvailable(ctx)
+// AvailableTypes lists active task types for the store «+» button; with a store it marks
+// types that cannot be created there today.
+func (s *Service) AvailableTypes(ctx context.Context, store string, now time.Time) ([]json.RawMessage, error) {
+	if store != "" {
+		id, e := uuid.Parse(store)
+		if e != nil || id == uuid.Nil {
+			return nil, services.ErrInvalid
+		}
+		store = id.String()
+	}
+	v, e := s.storage.(manualStorage).TaskTypesAvailable(ctx, store, now)
 	return v, services.PersonnelError(e)
 }
 

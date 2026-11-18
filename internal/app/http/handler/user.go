@@ -226,10 +226,14 @@ func (h *Handler) UserList(w http.ResponseWriter, r *http.Request) {
 func respLoginOK(w http.ResponseWriter, r *http.Request,
 	sessionId string, user *models.User, csrf string, roles []models.Role) {
 
+	render.JSON(w, r, loginBody(sessionId, user, csrf, roles))
+}
+
+func loginBody(sessionId string, user *models.User, csrf string, roles []models.Role) loginResponse {
 	if roles == nil {
 		roles = []models.Role{}
 	}
-	render.JSON(w, r, loginResponse{
+	return loginResponse{
 		CSRFToken: csrf,
 		Response:  resp.OK(),
 		Data: loginData{
@@ -242,7 +246,7 @@ func respLoginOK(w http.ResponseWriter, r *http.Request,
 				userData: toUserData(*user),
 			},
 		},
-	})
+	}
 }
 
 func respRefreshOK(w http.ResponseWriter, r *http.Request,

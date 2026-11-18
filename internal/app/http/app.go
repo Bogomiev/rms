@@ -107,6 +107,9 @@ func New(cfg Config, deps Dependencies) *App {
 		r.With(hdlr.OriginMiddleware(cfg.AppOrigins...)).Post("/login", handler.Login)
 		r.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Post("/logout", handler.Logout)
 		r.With(hdlr.OriginMiddleware(cfg.AppOrigins...)).Post("/refresh", handler.RefreshToken)
+		// One-time QR login: a signed-in user creates a code, a phone spends it to open its own session.
+		r.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Post("/login_code", handler.CreateLoginCode)
+		r.With(hdlr.OriginMiddleware(cfg.AppOrigins...)).Post("/login_code/redeem", handler.LoginByCode)
 	})
 
 	router.Route("/users", func(r chi.Router) {
