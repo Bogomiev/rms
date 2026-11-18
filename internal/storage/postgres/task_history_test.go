@@ -13,7 +13,7 @@ func TestTaskStatusHistoryAutomatic(t *testing.T) {
 	ctx := context.Background()
 	if _, err := db.db.Exec(`INSERT INTO stores(id,code,name,address) VALUES('00000000-0000-0000-0000-000000000001','001','Store','');
  INSERT INTO users(id,user_token,name,password) VALUES(100,'first','First','hash'),(101,'second','Second','hash');
- INSERT INTO task_types(id,name,service) VALUES(1,'Task','without_service')`); err != nil {
+ DELETE FROM task_types WHERE service='stoppers'; INSERT INTO task_types(id,name,service) VALUES(1,'Task','without_service')`); err != nil {
 		t.Fatal(err)
 	}
 	s := task.New(db)

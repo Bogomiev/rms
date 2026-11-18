@@ -174,13 +174,13 @@ func (h *Handler) TaskGenerateType(w http.ResponseWriter, r *http.Request) {
 // TaskTypesAvailable lists active task types that store users can create by hand.
 func (h *Handler) TaskTypesAvailable(w http.ResponseWriter, r *http.Request) {
 	s, ok := h.tasks.(interface {
-		AvailableTypes(context.Context) ([]json.RawMessage, error)
+		AvailableTypes(context.Context, string, time.Time) ([]json.RawMessage, error)
 	})
 	if !ok {
 		writeServiceError(w, r, services.ErrNotFound)
 		return
 	}
-	v, e := s.AvailableTypes(r.Context())
+	v, e := s.AvailableTypes(r.Context(), r.URL.Query().Get("store_id"), time.Now().In(h.taskLocation()))
 	if e != nil {
 		writeServiceError(w, r, e)
 		return

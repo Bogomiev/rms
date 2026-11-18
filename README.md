@@ -44,6 +44,8 @@ make install
 | `POST /auth/login` | JSON `{"user_token":"…","password":"…"}`; требует Origin; возвращает пользователя, идентификатор сессии и csrfToken, устанавливает cookies |
 | `POST /auth/refresh` | Требует Origin и cookie `refresh_token`, атомарно заменяет сессию и обе cookies, возвращает новый csrfToken; access-токен не требуется |
 | `POST /auth/logout` | Требует access-cookie, X-CSRF-Token и refresh-cookie; удаляет сессию и обе cookies |
+| `POST /auth/login_code` | Требует access-cookie и X-CSRF-Token; JSON `{"store_id":"…"}` (магазин необязателен). Выдаёт одноразовый код входа с телефона по QR: `{"code":"…","expires_in":120}`. Код живёт 2 минуты, работает один раз, хранится только в памяти RMS (как SHA-256) и пропадает при перезапуске; новый код пользователя отменяет предыдущий |
+| `POST /auth/login_code/redeem` | Требует Origin; JSON `{"code":"…"}`. Тратит код и открывает новую сессию его пользователя как `/auth/login` (cookies, csrfToken, user) плюс `store_id`/`store_name` магазина с QR. Неверный, использованный или истёкший код — 401 |
 | `GET /auth/session` | Проверяет access-cookie и активность сессии; возвращает csrfToken и userToken без ротации |
 | `GET /usertokenvalid?token=…` | Без авторизации: 200, если пользователь с таким `user_token` существует; 400 для отсутствующего, пустого или неизвестного значения; 500 при ошибке БД |
 | `GET /products` | С access-cookie: массив товаров в формате фронтенда |
@@ -89,7 +91,7 @@ TEST_POSTGRES_DSN='host=localhost port=5432 user=rms dbname=rms_test sslmode=dis
 
 Интеграционные тесты создают и удаляют собственные временные схемы; без `TEST_POSTGRES_DSN` они пропускаются.
 
-Миграция `012_product_name_search.sql` включает расширение `pg_trgm` в схеме `public` и создаёт GIN-индекс для поиска товаров по подстроке. На сервере PostgreSQL должно быть доступно расширение `pg_trgm`, а роль миграций должна иметь право его установить (либо администратор БД устанавливает его заранее в `public`). Семантика поиска `ILIKE` не меняется.
+Миграция `015_product_name_search.sql` (раньше называлась `012_product_name_search.sql`; повторный запуск безопасен) включает расширение `pg_trgm` в схеме `public` и создаёт GIN-индекс для поиска товаров по подстроке. На сервере PostgreSQL должно быть доступно расширение `pg_trgm`, а роль миграций должна иметь право его установить (либо администратор БД устанавливает его заранее в `public`). Семантика поиска `ILIKE` не меняется.
 
 Первичные ключи товаров и магазинов, а также `Product.ParentID`, имеют тип `uuid.UUID` в Go и `UUID` в PostgreSQL. `Product.ID` сериализуется в `uid`. В сущности магазина и его таблице отдельного идентификатора для 1С нет: HTTP-слой формирует `uid_1c` из `ID`.
 

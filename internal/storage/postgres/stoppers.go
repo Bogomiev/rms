@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/google/uuid"
 	"github.com/lib/pq"
 	"rms/internal/domain/models"
@@ -192,6 +193,20 @@ func (s *Storage) StopperProducts(ctx context.Context, query string, limit int) 
 // stopperTaskRemoveDays is how long an ended stopper stays in store tasks for removal.
 const stopperTaskRemoveDays = 14
 
+// stopperTaskPosition filters stopper_positions sp for the store row s on the day: a stopper is set,
+// it has started, it is running or ended within stopperTaskRemoveDays, and a promotion position
+// has a promotional price in the store price type.
+func stopperTaskPosition(day string) string {
+	return fmt.Sprintf(`sp.stopper_id IS NOT NULL AND sp.period_from<=%[1]s
+ AND (sp.period_to IS NULL OR sp.period_to>=%[1]s-%[2]d)
+ AND (sp.doc_id IS NULL OR EXISTS(SELECT 1 FROM prices pp WHERE pp.doc_id=sp.doc_id AND pp.product_id=sp.product_id AND pp.price_type=s.price_type_promo AND pp.price>0))`, day, stopperTaskRemoveDays)
+}
+
+// stopperTaskWork is true when a «Стопперы» task of the store would list anything on the day.
+func stopperTaskWork(store, day string) string {
+	return fmt.Sprintf(`EXISTS(SELECT 1 FROM stopper_positions sp JOIN stores s ON s.id=%s WHERE %s)`, store, stopperTaskPosition(day))
+}
+
 // StopperTask returns positions with a stopper for the task store on the given day: active ones
 // to check and ones ended within two weeks to remove, unless the product has an active stopper.
 func (s *Storage) StopperTask(ctx context.Context, taskID int64, today string, timezone string) (models.StopperTask, error) {
@@ -210,9 +225,7 @@ func (s *Storage) StopperTask(ctx context.Context, taskID int64, today string, t
  pos AS (
  SELECT sp.*,sp.period_to IS NOT NULL AND sp.period_to<$2::date AS remove
  FROM stopper_positions sp CROSS JOIN store s
- WHERE sp.stopper_id IS NOT NULL AND sp.period_from<=$2::date
- AND (sp.period_to IS NULL OR sp.period_to>=$2::date-$5::int)
- AND (sp.doc_id IS NULL OR EXISTS(SELECT 1 FROM prices p WHERE p.doc_id=sp.doc_id AND p.product_id=sp.product_id AND p.price_type=s.price_type_promo AND p.price>0))
+ WHERE `+stopperTaskPosition("$2::date")+`
  )
  SELECT ps.doc_id,ps.product_id,COALESCE(p.code,''),COALESCE(p.name,''),COALESCE(p.is_thermal_mode,false),
  CASE WHEN p.is_weight THEN 'кг' ELSE 'шт' END,sr.name,sr.color,
@@ -226,7 +239,7 @@ func (s *Storage) StopperTask(ctx context.Context, taskID int64, today string, t
  JOIN stoppers sr ON sr.id=ps.stopper_id
  LEFT JOIN products p ON p.id=ps.product_id
  WHERE NOT ps.remove OR NOT EXISTS(SELECT 1 FROM pos a WHERE a.product_id=ps.product_id AND NOT a.remove)
- ORDER BY ps.remove DESC,p.name,ps.product_id,ps.doc_id`, v.StoreID, today, taskID, timezone, stopperTaskRemoveDays)
+ ORDER BY ps.remove DESC,p.name,ps.product_id,ps.doc_id`, v.StoreID, today, taskID, timezone)
 	if err != nil {
 		return v, err
 	}
