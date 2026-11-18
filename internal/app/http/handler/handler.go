@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"github.com/google/uuid"
 	"rms/internal/domain/models"
 	"rms/internal/token"
 	"time"
@@ -56,6 +57,7 @@ type ProductService interface {
 }
 type StoreService interface {
 	Stores(context.Context) (models.StoresResponse, error)
+	UpdateStoreSalePointTag(context.Context, uuid.UUID, string) (*models.Store, error)
 }
 
 func (h *Handler) Configure(products ProductService, stores StoreService, accessTTL, refreshTTL time.Duration) {

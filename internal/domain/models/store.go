@@ -13,6 +13,7 @@ type Store struct {
 	ID             uuid.UUID `json:"id" db:"id"`
 	Code           string    `json:"code" db:"code"`
 	Name           string    `json:"name" db:"name"`
+	SalePointTag   string    `json:"sale_point_tag" db:"sale_point_tag"`
 	Address        string    `json:"address" db:"address"`
 }
 type StoresResponse struct {

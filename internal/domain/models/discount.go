@@ -7,7 +7,7 @@ type Discounts struct {
 	Items   []Discount `xml:"discount"`
 }
 type Discount struct {
-	StoreID             string `xml:"sale_point_tag,attr"`
+	SalePointTag        string `xml:"sale_point_tag,attr"`
 	ProductID           string `xml:"product_id,attr"`
 	Price               string `xml:"price_card,attr"`
 	Start               string `xml:"start,attr"`

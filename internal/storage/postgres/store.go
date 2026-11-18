@@ -10,11 +10,11 @@ import (
 	"rms/internal/storage"
 )
 
-const storeColumns = "id,code,name,address,price_type,price_type_promo,created_at,updated_at"
+const storeColumns = "id,code,name,address,price_type,price_type_promo,sale_point_tag,created_at,updated_at"
 
 func scanStore(row interface{ Scan(...any) error }) (*models.Store, error) {
 	var v models.Store
-	if err := row.Scan(&v.ID, &v.Code, &v.Name, &v.Address, &v.PriceType, &v.PriceTypePromo, &v.CreatedAt, &v.UpdatedAt); err != nil {
+	if err := row.Scan(&v.ID, &v.Code, &v.Name, &v.Address, &v.PriceType, &v.PriceTypePromo, &v.SalePointTag, &v.CreatedAt, &v.UpdatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, storage.ErrNotFound
 		}
@@ -27,7 +27,7 @@ func (s *Storage) AddStore(ctx context.Context, v *models.Store) (*models.Store,
 		return nil, fmt.Errorf("store is required")
 	}
 
-	return scanStore(s.db.QueryRowContext(ctx, `INSERT INTO stores (id,code,name,address,price_type,price_type_promo,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,NOW(),NOW()) RETURNING `+storeColumns, v.ID, v.Code, v.Name, v.Address, v.PriceType, v.PriceTypePromo))
+	return scanStore(s.db.QueryRowContext(ctx, `INSERT INTO stores (id,code,name,address,price_type,price_type_promo,sale_point_tag,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,NOW(),NOW()) RETURNING `+storeColumns, v.ID, v.Code, v.Name, v.Address, v.PriceType, v.PriceTypePromo, v.SalePointTag))
 }
 func (s *Storage) UpdateStore(ctx context.Context, v *models.Store) (*models.Store, error) {
 	if v == nil {
@@ -35,6 +35,9 @@ func (s *Storage) UpdateStore(ctx context.Context, v *models.Store) (*models.Sto
 	}
 
 	return scanStore(s.db.QueryRowContext(ctx, `UPDATE stores SET code=$2,name=$3,address=$4,price_type=$5,price_type_promo=$6,updated_at=NOW() WHERE id=$1 RETURNING `+storeColumns, v.ID, v.Code, v.Name, v.Address, v.PriceType, v.PriceTypePromo))
+}
+func (s *Storage) UpdateStoreSalePointTag(ctx context.Context, id uuid.UUID, tag string) (*models.Store, error) {
+	return scanStore(s.db.QueryRowContext(ctx, "UPDATE stores SET sale_point_tag=$2,updated_at=NOW() WHERE id=$1 RETURNING "+storeColumns, id, tag))
 }
 func (s *Storage) Stores(ctx context.Context) ([]models.Store, error) {
 	rows, err := s.db.QueryContext(ctx, "SELECT "+storeColumns+" FROM stores ORDER BY id")

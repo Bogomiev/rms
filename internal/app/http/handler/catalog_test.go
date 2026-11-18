@@ -13,6 +13,7 @@ import (
 
 type catalogStub struct {
 	serviceStub
+	StoreService
 	valid    bool
 	err      error
 	received string

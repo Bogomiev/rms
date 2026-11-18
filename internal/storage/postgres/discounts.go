@@ -13,7 +13,7 @@ func (s *Storage) Discounts(ctx context.Context, timezone string) ([]models.Disc
  FROM prices WHERE period <= (CURRENT_TIMESTAMP AT TIME ZONE $1)
  ORDER BY price_type,product_id,period DESC,doc_id DESC
  )
- SELECT s.id,p.product_id,(p.price::numeric(30,2))::text,
+ SELECT COALESCE(NULLIF(s.sale_point_tag,''),s.id::text),p.product_id,(p.price::numeric(30,2))::text,
  to_char(p.period,'YYYY-MM-DD HH24:MI:SS'),
  COALESCE(to_char(e.period,'YYYY-MM-DD HH24:MI:SS'),''),
  p.doc_id
@@ -31,7 +31,7 @@ func (s *Storage) Discounts(ctx context.Context, timezone string) ([]models.Disc
 	items := []models.Discount{}
 	for rows.Next() {
 		var v models.Discount
-		if err := rows.Scan(&v.StoreID, &v.ProductID, &v.Price, &v.Start, &v.End, &v.DocID); err != nil {
+		if err := rows.Scan(&v.SalePointTag, &v.ProductID, &v.Price, &v.Start, &v.End, &v.DocID); err != nil {
 			return nil, err
 		}
 		v.WriteOffBonus = true

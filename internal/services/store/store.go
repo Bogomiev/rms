@@ -2,10 +2,13 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/google/uuid"
 	"log/slog"
 	"rms/internal/domain/models"
+	"rms/internal/services"
+	"rms/internal/storage"
 	"unicode/utf8"
 )
 
@@ -14,6 +17,7 @@ type StoreStorage interface {
 	GetStore(context.Context, uuid.UUID) (*models.Store, error)
 	AddStore(context.Context, *models.Store) (*models.Store, error)
 	UpdateStore(context.Context, *models.Store) (*models.Store, error)
+	UpdateStoreSalePointTag(context.Context, uuid.UUID, string) (*models.Store, error)
 	DeleteStore(context.Context, uuid.UUID) error
 }
 type StoreService struct{ storage StoreStorage }
@@ -32,6 +36,9 @@ func (s *StoreService) AddStore(ctx context.Context, v *models.Store) (*models.S
 	if utf8.RuneCountInString(v.Address) > 250 {
 		return nil, fmt.Errorf("address must be at most 250 characters")
 	}
+	if utf8.RuneCountInString(v.SalePointTag) > 100 {
+		return nil, services.ErrInvalid
+	}
 	return s.storage.AddStore(ctx, v)
 }
 func (s *StoreService) UpdateStore(ctx context.Context, v *models.Store) (*models.Store, error) {
@@ -42,6 +49,16 @@ func (s *StoreService) UpdateStore(ctx context.Context, v *models.Store) (*model
 		return nil, fmt.Errorf("address must be at most 250 characters")
 	}
 	return s.storage.UpdateStore(ctx, v)
+}
+func (s *StoreService) UpdateStoreSalePointTag(ctx context.Context, id uuid.UUID, tag string) (*models.Store, error) {
+	if id == uuid.Nil || utf8.RuneCountInString(tag) > 100 {
+		return nil, services.ErrInvalid
+	}
+	v, err := s.storage.UpdateStoreSalePointTag(ctx, id, tag)
+	if errors.Is(err, storage.ErrNotFound) {
+		return nil, services.ErrNotFound
+	}
+	return v, err
 }
 func (s *StoreService) Stores(ctx context.Context) (models.StoresResponse, error) {
 	items, err := s.storage.Stores(ctx)

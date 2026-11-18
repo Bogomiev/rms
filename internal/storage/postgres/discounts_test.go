@@ -33,8 +33,29 @@ func TestDiscountsCurrentPriceAndEnd(t *testing.T) {
 		t.Fatalf("discounts: %+v", got)
 	}
 	v := got[0]
-	if v.StoreID != store.ID.String() || v.ProductID != product.String() || v.DocID != doc.String() || v.Price != "149.00" || v.Start != "2020-01-01 00:00:00" || v.End != "2099-01-01 00:00:00" || !v.WriteOffBonus || v.ApplyOtherDiscounts {
+	if v.SalePointTag != store.ID.String() || v.ProductID != product.String() || v.DocID != doc.String() || v.Price != "149.00" || v.Start != "2020-01-01 00:00:00" || v.End != "2099-01-01 00:00:00" || !v.WriteOffBonus || v.ApplyOtherDiscounts {
 		t.Fatalf("%+v", v)
+	}
+	const tag = "Магазин № 1"
+	if _, err := s.UpdateStoreSalePointTag(ctx, store.ID, tag); err != nil {
+		t.Fatal(err)
+	}
+	// The import refreshes catalog fields without overwriting the administrator's tag.
+	store.Name = "Updated by 1C"
+	saved, err := s.UpdateStore(ctx, &store)
+	if err != nil || saved.SalePointTag != tag {
+		t.Fatalf("store after import: %+v, %v", saved, err)
+	}
+	got, err = s.Discounts(ctx, "UTC")
+	if err != nil || len(got) != 1 || got[0].SalePointTag != tag {
+		t.Fatalf("discount with custom tag: %+v, %v", got, err)
+	}
+	if _, err := s.UpdateStoreSalePointTag(ctx, store.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.Discounts(ctx, "UTC")
+	if err != nil || len(got) != 1 || got[0].SalePointTag != store.ID.String() {
+		t.Fatalf("discount after clearing tag: %+v, %v", got, err)
 	}
 	// A different document is a distinct key; an exact duplicate still fails.
 	items = append(items, models.Price{Period: items[0].Period, PriceType: store.PriceTypePromo, ProductID: product, DocID: uuid.New(), Price: "150"})
