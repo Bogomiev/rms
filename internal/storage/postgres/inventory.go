@@ -28,7 +28,16 @@ func (s *Storage) replaceSnapshot(ctx context.Context, table string, columns []s
 	if _, err = tx.ExecContext(ctx, "CREATE TABLE IF NOT EXISTS "+stage+" (LIKE "+table+" INCLUDING ALL); TRUNCATE TABLE "+stage); err != nil {
 		return err
 	}
-	stmt, err := tx.PrepareContext(ctx, pq.CopyIn(stage, columns...))
+	if err = copySnapshotRows(ctx, tx, stage, columns, count, row); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, "ALTER TABLE "+table+" RENAME TO "+table+"_swap; ALTER TABLE "+stage+" RENAME TO "+table+"; ALTER TABLE "+table+"_swap RENAME TO "+stage+"; TRUNCATE TABLE "+stage); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+func copySnapshotRows(ctx context.Context, tx *sql.Tx, table string, columns []string, count int, row func(int) []any) error {
+	stmt, err := tx.PrepareContext(ctx, pq.CopyIn(table, columns...))
 	if err != nil {
 		return err
 	}
@@ -44,17 +53,39 @@ func (s *Storage) replaceSnapshot(ctx context.Context, table string, columns []s
 	if err = stmt.Close(); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, "ALTER TABLE "+table+" RENAME TO "+table+"_swap; ALTER TABLE "+stage+" RENAME TO "+table+"; ALTER TABLE "+table+"_swap RENAME TO "+stage+"; TRUNCATE TABLE "+stage); err != nil {
-		return err
-	}
-	return tx.Commit()
+	return nil
 }
+
 func (s *Storage) ReplacePrices(ctx context.Context, items []models.Price) error {
 	return s.replaceSnapshot(ctx, "prices", []string{"period", "price_type", "product_id", "price", "doc_id"}, len(items), func(i int) []any {
 		v := items[i]
 		return []any{v.Period, v.PriceType, v.ProductID, v.Price.String(), v.DocID}
 	})
 }
+func (s *Storage) ReplaceTodayPriceChanges(ctx context.Context, items []models.TodayPriceChange) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Serialize replacements while allowing ordinary SELECTs to read the committed snapshot.
+	if _, err = tx.ExecContext(ctx, "LOCK TABLE today_price_changes IN SHARE ROW EXCLUSIVE MODE"); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, "DELETE FROM today_price_changes"); err != nil {
+		return err
+	}
+	columns := []string{"store_id", "product_id", "price", "is_promo"}
+	if err = copySnapshotRows(ctx, tx, "today_price_changes", columns, len(items), func(i int) []any {
+		v := items[i]
+		return []any{v.StoreID, v.ProductID, v.Price.String(), v.IsPromo}
+	}); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 func (s *Storage) ReplaceStocks(ctx context.Context, items []models.Stock) error {
 	return s.replaceSnapshot(ctx, "stocks", []string{"product_id", "store_id", "stock"}, len(items), func(i int) []any { v := items[i]; return []any{v.ProductID, v.StoreID, v.Stock.String()} })
 }

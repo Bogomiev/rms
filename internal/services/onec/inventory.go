@@ -27,27 +27,46 @@ type storeStocks struct {
 	} `json:"stocks"`
 }
 
+func fetchPage[T any](ctx context.Context, s *Service, path string) (models.Page[T], error) {
+	var result models.Page[T]
+	resp, err := s.Do(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return result, err
+	}
+	defer resp.Body.Close()
+
+	decoder := json.NewDecoder(resp.Body)
+	if err := decoder.Decode(&result); err != nil {
+		return result, fmt.Errorf("decode 1C response: %w", err)
+	}
+	var extra any
+	if decoder.Decode(&extra) != io.EOF {
+		return result, fmt.Errorf("unexpected trailing data")
+	}
+	return result, nil
+}
+
+func (s *Service) GetTodayPriceChanges(ctx context.Context) ([]models.TodayPriceChange, error) {
+	result, err := fetchPage[models.TodayPriceChange](ctx, s, "v1/GetTodayPriceChanges")
+	if err != nil {
+		return nil, err
+	}
+	if result.Items == nil || result.Page != 1 || result.TotalPages < 0 || result.TotalPages > 1 ||
+		result.TotalItems != len(result.Items) || result.PerPage < len(result.Items) ||
+		(result.TotalItems > 0 && result.TotalPages != 1) {
+		return nil, fmt.Errorf("invalid GetTodayPriceChanges snapshot")
+	}
+	return result.Items, nil
+}
+
 // Validate every page before replacing any data. Inconsistent pagination fails closed.
 func fetchPages[T any](ctx context.Context, s *Service, method string) ([]T, error) {
 	items := []T{}
 	total, pages, perPage := -1, -1, -1
 	for page := 1; ; page++ {
-		resp, err := s.Do(ctx, http.MethodGet, "v1/"+method+"?page="+strconv.Itoa(page), nil)
+		result, err := fetchPage[T](ctx, s, "v1/"+method+"?page="+strconv.Itoa(page))
 		if err != nil {
-			return nil, err
-		}
-		var result models.Page[T]
-		decoder := json.NewDecoder(resp.Body)
-		err = decoder.Decode(&result)
-		if err == nil {
-			var extra any
-			if decoder.Decode(&extra) != io.EOF {
-				err = fmt.Errorf("unexpected trailing data")
-			}
-		}
-		resp.Body.Close()
-		if err != nil {
-			return nil, fmt.Errorf("decode %s page %d: %w", method, page, err)
+			return nil, fmt.Errorf("fetch %s page %d: %w", method, page, err)
 		}
 		if result.Items == nil || result.Page != page || result.TotalItems < 0 || result.TotalPages < 0 || result.PerPage < 0 {
 			return nil, fmt.Errorf("invalid %s pagination", method)

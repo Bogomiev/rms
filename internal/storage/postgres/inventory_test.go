@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"github.com/google/uuid"
 	"rms/internal/domain/models"
@@ -116,5 +117,61 @@ func TestSnapshotConcurrentReads(t *testing.T) {
 	}
 	if err := <-done; err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestTodayPriceChangesSnapshot(t *testing.T) {
+	s := authTestStorage(t)
+	ctx := context.Background()
+	item := models.TodayPriceChange{StoreID: uuid.New(), ProductID: uuid.New(), Price: "690.123456789", IsPromo: true}
+	for _, p := range []json.Number{"2000", item.Price} {
+		current := item
+		current.Price = p
+		if err := s.ReplaceTodayPriceChanges(ctx, []models.TodayPriceChange{current}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	reader, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Rollback()
+	var snapshot string
+	if err := reader.QueryRowContext(ctx, "SELECT pg_current_snapshot()::text").Scan(&snapshot); err != nil {
+		t.Fatal(err)
+	}
+
+	replacement := item
+	replacement.Price = "2000"
+	if err := s.ReplaceTodayPriceChanges(ctx, []models.TodayPriceChange{replacement}); err != nil {
+		t.Fatal(err)
+	}
+	var previousPrice json.Number
+	if err := reader.QueryRowContext(ctx, "SELECT price FROM today_price_changes").Scan(&previousPrice); err != nil || previousPrice != item.Price {
+		t.Fatalf("previous snapshot price = %s, error = %v", previousPrice, err)
+	}
+	if err := reader.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	invalid := item
+	invalid.Price = "invalid"
+	if err := s.ReplaceTodayPriceChanges(ctx, []models.TodayPriceChange{invalid}); err == nil {
+		t.Fatal("invalid price accepted")
+	}
+	var got models.TodayPriceChange
+	var count int
+	err = s.db.QueryRowContext(ctx, "SELECT store_id, product_id, price, is_promo, count(*) OVER () FROM today_price_changes").
+		Scan(&got.StoreID, &got.ProductID, &got.Price, &got.IsPromo, &count)
+	if err != nil || got != replacement || count != 1 {
+		t.Fatalf("snapshot = %+v, count = %d, error = %v", got, count, err)
+	}
+
+	if err := s.ReplaceTodayPriceChanges(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.db.QueryRowContext(ctx, "SELECT count(*) FROM today_price_changes").Scan(&count); err != nil || count != 0 {
+		t.Fatalf("empty snapshot count = %d, error = %v", count, err)
 	}
 }

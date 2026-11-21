@@ -29,6 +29,10 @@ onec:
 scheduler:
   timezone: Asia/Vladivostok
   jobs:
+    today_price_changes_sync:
+      enabled: true
+      schedule: "0 * * * *"
+      timeout: 5m
     prices_sync:
       enabled: true
       schedule: "0 8-22 * * *"

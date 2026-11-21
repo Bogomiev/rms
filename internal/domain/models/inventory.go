@@ -13,6 +13,13 @@ type Price struct {
 	ProductID uuid.UUID   `json:"product_id"`
 	Price     json.Number `json:"price"`
 }
+type TodayPriceChange struct {
+	StoreID   uuid.UUID   `json:"store_id"`
+	ProductID uuid.UUID   `json:"product_id"`
+	Price     json.Number `json:"price"`
+	IsPromo   bool        `json:"is_promo"`
+}
+
 type Stock struct {
 	ProductID uuid.UUID   `json:"product_id"`
 	StoreID   uuid.UUID   `json:"store_id"`
