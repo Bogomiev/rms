@@ -35,6 +35,7 @@ type Handler struct {
 	files          FileService
 	discounts      DiscountService
 	stoppers       StopperService
+	priceTags      PriceTagService
 	prices         PriceService
 	stocks         StockService
 	marketplace    MarketplaceService

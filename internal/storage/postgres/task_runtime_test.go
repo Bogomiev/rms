@@ -15,7 +15,7 @@ func TestTaskGenerationAndActions(t *testing.T) {
 	svc := task.New(db)
 	_, e := db.db.Exec(`INSERT INTO users(id,user_token,name,password,is_admin) VALUES(100,'admin','admin','hash',true);
  INSERT INTO stores(id,code,name,address) VALUES('00000000-0000-0000-0000-000000000001','001','Store','');
- DELETE FROM task_types WHERE service='stoppers'; INSERT INTO task_types(id,name,service,custom_fields) VALUES(1,'Collection','cash_collection','{"qrCodeSrc":"image"}');
+ DELETE FROM task_types WHERE service IN ('stoppers','price_print'); INSERT INTO task_types(id,name,service,custom_fields) VALUES(1,'Collection','cash_collection','{"qrCodeSrc":"image"}');
  INSERT INTO task_scheduling(task_type_id,frequency,period_from,period_to,days,time,stores) VALUES(1,2,'2026-11-02','2026-11-29',ARRAY[1,0,0,0,0,0,0,0,1,0,0,0,0,0]::smallint[],'09:00',ARRAY['00000000-0000-0000-0000-000000000001']::uuid[]);`)
 	if e != nil {
 		t.Fatal(e)
@@ -134,7 +134,7 @@ func TestTaskGenerationByType(t *testing.T) {
 	svc := task.New(db)
 	_, err := db.db.Exec(`INSERT INTO users(id,user_token,name,password,is_admin) VALUES(100,'admin','admin','hash',true);
  INSERT INTO stores(id,code,name,address) VALUES('00000000-0000-0000-0000-000000000001','001','Store','');
- DELETE FROM task_types WHERE service='stoppers'; INSERT INTO task_types(id,name,service) VALUES(1,'First','without_service'),(2,'Second','without_service');
+ DELETE FROM task_types WHERE service IN ('stoppers','price_print'); INSERT INTO task_types(id,name,service) VALUES(1,'First','without_service'),(2,'Second','without_service');
  INSERT INTO task_scheduling(task_type_id,frequency,period_from,period_to,days,stores)
  SELECT id,1,'2026-11-02','2026-11-08',ARRAY[1,0,0,0,0,0,0]::smallint[],ARRAY['00000000-0000-0000-0000-000000000001']::uuid[] FROM task_types;`)
 	if err != nil {

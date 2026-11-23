@@ -60,6 +60,8 @@ make install
 | `GET /stoppers/products?q=…` | Администратор или роль `manager`: поиск товара для ручного добавления |
 | `GET /tasks/types`, `POST /tasks/manual` | С access-cookie: активные типы заданий и создание задания для магазина вручную |
 | `GET /tasks/{id}/stoppers`, `PUT /tasks/{id}/stoppers/check` | С access-cookie: экран задания «Стопперы» и отметки магазина |
+| `GET/POST /tasks/{id}/price_tags`, `PUT/DELETE /tasks/{id}/price_tags/{item}`, `PUT /tasks/{id}/price_tags/printed`, `GET /tasks/{id}/price_tags/products?q=…` | С access-cookie: постоянное задание «Печать ценников» — позиции, ручное добавление, тип и количество, отметка печати, поиск товара; см. `docs/price_tags.md` |
+| `GET /tasks/price_tags/product?store_id=…&product_id=…`, `POST /tasks/price_tags/product` | С access-cookie: ценник товара для карточки — есть ли он в задании «Печать ценников», последняя печать; постановка товара в задание |
 
 `user_token` — уникальная непустая строка до 255 байт, идентификатор для входа вместе с паролем. В Go используется `UserToken`, в SQL и JSON — `user_token`. Сессии связаны с пользователем через `user_id`.
 
@@ -261,6 +263,8 @@ Timeout каждой задачи — 15 минут.
 Задание `today_price_changes_sync` запускается в начале каждого часа по
 `scheduler.timezone`. Оно вызывает `GET v1/GetTodayPriceChanges` без параметров и
 атомарно заменяет данные в `today_price_changes` после проверки полноты ответа.
+Строка с прежней ценой сохраняет время прихода `arrived_at`, новая или изменившаяся
+получает время синхронизации (по нему ценник снова ставится в печать).
 Пустой список очищает таблицу. Расписание и таймаут (по умолчанию `5m`) можно
 переопределить в `scheduler.jobs.today_price_changes_sync`.
 

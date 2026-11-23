@@ -62,6 +62,8 @@ func (s *Storage) ReplacePrices(ctx context.Context, items []models.Price) error
 		return []any{v.Period, v.PriceType, v.ProductID, v.Price.String(), v.DocID}
 	})
 }
+// ReplaceTodayPriceChanges replaces today's 1C price changes. A row that was already there with the same price
+// keeps the time it arrived (arrived_at); a new or changed row gets the time of the sync.
 func (s *Storage) ReplaceTodayPriceChanges(ctx context.Context, items []models.TodayPriceChange) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -73,14 +75,21 @@ func (s *Storage) ReplaceTodayPriceChanges(ctx context.Context, items []models.T
 	if _, err = tx.ExecContext(ctx, "LOCK TABLE today_price_changes IN SHARE ROW EXCLUSIVE MODE"); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, "DELETE FROM today_price_changes"); err != nil {
+	if _, err = tx.ExecContext(ctx, "CREATE TEMP TABLE today_price_changes_new (store_id UUID NOT NULL, product_id UUID NOT NULL, price NUMERIC NOT NULL, is_promo BOOLEAN NOT NULL) ON COMMIT DROP"); err != nil {
 		return err
 	}
 	columns := []string{"store_id", "product_id", "price", "is_promo"}
-	if err = copySnapshotRows(ctx, tx, "today_price_changes", columns, len(items), func(i int) []any {
+	if err = copySnapshotRows(ctx, tx, "today_price_changes_new", columns, len(items), func(i int) []any {
 		v := items[i]
 		return []any{v.StoreID, v.ProductID, v.Price.String(), v.IsPromo}
 	}); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `WITH old AS (DELETE FROM today_price_changes RETURNING *)
+ INSERT INTO today_price_changes(store_id,product_id,price,is_promo,arrived_at)
+ SELECT n.store_id,n.product_id,n.price,n.is_promo,COALESCE((SELECT min(o.arrived_at) FROM old o
+  WHERE o.store_id=n.store_id AND o.product_id=n.product_id AND o.is_promo=n.is_promo AND o.price=n.price),now())
+ FROM today_price_changes_new n`); err != nil {
 		return err
 	}
 	return tx.Commit()

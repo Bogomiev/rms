@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"rms/internal/domain/models"
 	"testing"
+	"time"
 )
 
 func TestInventorySnapshots(t *testing.T) {
@@ -159,6 +160,18 @@ func TestTodayPriceChangesSnapshot(t *testing.T) {
 	invalid.Price = "invalid"
 	if err := s.ReplaceTodayPriceChanges(ctx, []models.TodayPriceChange{invalid}); err == nil {
 		t.Fatal("invalid price accepted")
+	}
+	// The row changed by the replacement got a new arrival time; the same price keeps it.
+	var arrived time.Time
+	if err := s.db.QueryRowContext(ctx, "SELECT arrived_at FROM today_price_changes").Scan(&arrived); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ReplaceTodayPriceChanges(ctx, []models.TodayPriceChange{replacement}); err != nil {
+		t.Fatal(err)
+	}
+	var same bool
+	if err := s.db.QueryRowContext(ctx, "SELECT arrived_at=$1 FROM today_price_changes", arrived).Scan(&same); err != nil || !same {
+		t.Fatalf("unchanged row restamped: %v", err)
 	}
 	var got models.TodayPriceChange
 	var count int

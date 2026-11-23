@@ -11,7 +11,7 @@ func TestTaskDeleteWithStatusHistory(t *testing.T) {
 	if _, err := db.db.Exec(`
  INSERT INTO stores(id,code,name,address) VALUES('00000000-0000-0000-0000-000000000001','001','Store','');
  INSERT INTO users(id,user_token,name,password) VALUES(100,'delete-test','Test','hash');
- DELETE FROM task_types WHERE service='stoppers'; INSERT INTO task_types(id,name,service) VALUES(1,'Task','without_service');
+ DELETE FROM task_types WHERE service IN ('stoppers','price_print'); INSERT INTO task_types(id,name,service) VALUES(1,'Task','without_service');
  INSERT INTO tasks(id,type_id,store_id,start,status) VALUES
  (1,1,'00000000-0000-0000-0000-000000000001','2026-11-02 09:00:00','in_progress'),
  (2,1,'00000000-0000-0000-0000-000000000001','2026-11-02 10:00:00','new');

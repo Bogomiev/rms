@@ -40,6 +40,7 @@ type Dependencies struct {
 	Files       hdlr.FileService
 	Discounts   hdlr.DiscountService
 	Stoppers    hdlr.StopperService
+	PriceTags   hdlr.PriceTagService
 	Prices      hdlr.PriceService
 	Stocks      hdlr.StockService
 	ProductInfo hdlr.ProductInfoService
@@ -60,6 +61,7 @@ func New(cfg Config, deps Dependencies) *App {
 	handler.ConfigurePriceStock(deps.Prices, deps.Stocks)
 	handler.ConfigureDiscounts(deps.Discounts)
 	handler.ConfigureStoppers(deps.Stoppers)
+	handler.ConfigurePriceTags(deps.PriceTags)
 	handler.ConfigureProductInfo(deps.ProductInfo, deps.Marketplace)
 	handler.ConfigureFiles(deps.Files)
 	handler.ConfigureRoles(deps.Roles)
@@ -148,6 +150,15 @@ func New(cfg Config, deps Dependencies) *App {
 				r.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Post("/manual", handler.TaskCreateManual)
 				r.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/{id}/stoppers", handler.StopperTask)
 				r.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Put("/{id}/stoppers/check", handler.SetStopperTaskCheck)
+				// «Печать ценников»: positions, tags added by hand, print marks and product search.
+				r.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/price_tags/product", handler.PriceTagProduct)
+				r.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Post("/price_tags/product", handler.AddPriceTagProduct)
+				r.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/{id}/price_tags", handler.PriceTagTask)
+				r.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Post("/{id}/price_tags", handler.AddPriceTag)
+				r.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Put("/{id}/price_tags/printed", handler.SetPriceTagsPrinted)
+				r.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/{id}/price_tags/products", handler.PriceTagProducts)
+				r.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Put("/{id}/price_tags/{item}", handler.SetPriceTag)
+				r.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Delete("/{id}/price_tags/{item}", handler.DeletePriceTag)
 				for _, action := range []string{"start", "cancel", "complete"} {
 					r.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Post("/{id}/"+action, handler.TaskAction(action))
 				}

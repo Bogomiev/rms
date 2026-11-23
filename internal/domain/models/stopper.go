@@ -3,15 +3,19 @@ package models
 import "github.com/google/uuid"
 
 // Stopper is a shelf label put on promotional products in stores.
+// Stopper is a sticker from the reference book. Days is its duration: setting it on a position makes
+// the end date the start date plus Days, unless the position ends earlier; nil keeps an open period.
 type Stopper struct {
 	ID        int64  `json:"id"`
 	Name      string `json:"name"`
 	Color     string `json:"color"`
+	Days      *int   `json:"days"`
 	Positions int64  `json:"positions"`
 }
 type StopperInput struct {
 	Name  string `json:"name"`
 	Color string `json:"color"`
+	Days  *int   `json:"days"`
 }
 
 // StopperPositionKey identifies a product of a 1C promotion document;

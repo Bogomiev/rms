@@ -42,7 +42,11 @@ func TestAddStopperTrimsAndValidates(t *testing.T) {
 	if err != nil || got.ID != 7 || got.Name != "Сезон" || stub.input.Name != "Сезон" {
 		t.Fatal(got, err, stub.input)
 	}
-	for _, in := range []models.StopperInput{{Name: " ", Color: "#1F5FBF"}, {Name: "Сезон", Color: "blue"}, {Name: "Очень длинное имя стоппера!", Color: "#1F5FBF"}} {
+	month, zero, tooLong := 28, 0, 366
+	if got, err = New(stub, "UTC").AddStopper(context.Background(), models.StopperInput{Name: "Новинка", Color: "#1E9E4A", Days: &month}); err != nil || got.Days == nil || *got.Days != 28 || *stub.input.Days != 28 {
+		t.Fatal("duration:", got, err)
+	}
+	for _, in := range []models.StopperInput{{Name: " ", Color: "#1F5FBF"}, {Name: "Сезон", Color: "blue"}, {Name: "Очень длинное имя стоппера!", Color: "#1F5FBF"}, {Name: "Сезон", Color: "#1F5FBF", Days: &zero}, {Name: "Сезон", Color: "#1F5FBF", Days: &tooLong}} {
 		if _, err := New(stub, "UTC").AddStopper(context.Background(), in); !errors.Is(err, services.ErrInvalid) {
 			t.Fatalf("%+v: %v", in, err)
 		}

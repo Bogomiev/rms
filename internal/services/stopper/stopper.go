@@ -49,8 +49,13 @@ func validDate(value string) bool {
 }
 func validStopper(in *models.StopperInput) bool {
 	in.Name = strings.TrimSpace(in.Name)
-	return in.Name != "" && utf8.RuneCountInString(in.Name) <= maxNameLength && colorPattern.MatchString(in.Color)
+	return in.Name != "" && utf8.RuneCountInString(in.Name) <= maxNameLength && colorPattern.MatchString(in.Color) &&
+		(in.Days == nil || *in.Days >= 1 && *in.Days <= maxStopperDays)
 }
+
+// maxStopperDays limits the duration of a stopper to a year.
+const maxStopperDays = 365
+
 func validKeys(keys []models.StopperPositionKey) bool {
 	if len(keys) == 0 || len(keys) > maxPositions {
 		return false
@@ -75,7 +80,7 @@ func (s *Service) AddStopper(ctx context.Context, in models.StopperInput) (model
 	if e != nil {
 		return models.Stopper{}, services.PersonnelError(e)
 	}
-	return models.Stopper{ID: id, Name: in.Name, Color: in.Color}, nil
+	return models.Stopper{ID: id, Name: in.Name, Color: in.Color, Days: in.Days}, nil
 }
 func (s *Service) SaveStopper(ctx context.Context, id int64, in models.StopperInput) error {
 	if id <= 0 || !validStopper(&in) {

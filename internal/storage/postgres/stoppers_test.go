@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"github.com/google/uuid"
@@ -255,6 +256,83 @@ func TestStopperManagerRole(t *testing.T) {
 	for user, want := range map[int64]bool{manager: true, seller: false, 999999: false} {
 		if got, err := s.StopperManager(ctx, user); err != nil || got != want {
 			t.Fatal(user, got, err)
+		}
+	}
+}
+
+// A stopper with a duration ends a position on its start date plus the days, unless the position ends
+// earlier; the period stays when the stopper is set again, removed or has no duration.
+func TestStopperDaysSetEndDate(t *testing.T) {
+	s := authTestStorage(t)
+	ctx := context.Background()
+	store := models.Store{ID: uuid.New(), PriceType: uuid.New(), PriceTypePromo: uuid.New()}
+	if _, err := s.AddStore(ctx, &store); err != nil {
+		t.Fatal(err)
+	}
+	open, ending, manual, docOpen, docEnding := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	if err := s.UpsertProducts(ctx, []models.Product{{ID: open, Code: "1", Name: "А", MarkingType: "none"}, {ID: ending, Code: "2", Name: "Б", MarkingType: "none"}, {ID: manual, Code: "3", Name: "В", MarkingType: "none"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ReplacePrices(ctx, []models.Price{
+		{Period: "2026-11-01T00:00:00", PriceType: store.PriceTypePromo, ProductID: open, DocID: docOpen, Price: "100"},
+		{Period: "2026-11-01T00:00:00", PriceType: store.PriceTypePromo, ProductID: ending, DocID: docEnding, Price: "100"},
+		{Period: "2026-11-15T00:00:00", PriceType: store.PriceTypePromo, ProductID: ending, DocID: uuid.New(), Price: "0"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	fourteen, month := 14, 28
+	short, err := s.AddStopper(ctx, models.StopperInput{Name: "Суперновинка", Color: "#1E9E4A", Days: &fourteen})
+	if err != nil {
+		t.Fatal(err)
+	}
+	long, err := s.AddStopper(ctx, models.StopperInput{Name: "Месяц", Color: "#1E9E4A", Days: &month})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain, err := s.AddStopper(ctx, models.StopperInput{Name: "Без срока", Color: "#1E9E4A"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	end := func(product uuid.UUID) string {
+		var v sql.NullString
+		if err := s.db.QueryRowContext(ctx, "SELECT to_char(period_to,'YYYY-MM-DD') FROM stopper_positions WHERE product_id=$1", product).Scan(&v); err != nil {
+			t.Fatal(err)
+		}
+		return v.String
+	}
+	openKey, endingKey := models.StopperPositionKey{DocID: &docOpen, ProductID: open}, models.StopperPositionKey{DocID: &docEnding, ProductID: ending}
+	if err = s.SetPositionsStopper(ctx, []models.StopperPositionKey{openKey}, &plain); err != nil || end(open) != "" {
+		t.Fatal("no duration keeps an open period:", err, end(open))
+	}
+	if err = s.SetPositionsStopper(ctx, []models.StopperPositionKey{openKey}, &short); err != nil || end(open) != "2026-11-15" {
+		t.Fatal("start plus 14 days:", err, end(open))
+	}
+	if err = s.SetPositionsStopper(ctx, []models.StopperPositionKey{endingKey}, &long); err != nil || end(ending) != "2026-11-14" {
+		t.Fatal("the promotion ends earlier:", err, end(ending))
+	}
+	later := "2026-12-31"
+	if err = s.SetPositionsPeriod(ctx, []models.StopperPositionKey{openKey}, "2026-11-01", &later); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.SetPositionsStopper(ctx, []models.StopperPositionKey{openKey}, &short); err != nil || end(open) != later {
+		t.Fatal("the same stopper keeps a period changed by hand:", err, end(open))
+	}
+	if err = s.SetPositionsStopper(ctx, []models.StopperPositionKey{openKey}, nil); err != nil || end(open) != later {
+		t.Fatal("removing the stopper keeps the period:", err, end(open))
+	}
+	if err = s.AddManualPosition(ctx, models.StopperManualInput{ProductID: manual, StopperID: long, From: "2026-11-10"}); err != nil || end(manual) != "2026-12-08" {
+		t.Fatal("manual position:", err, end(manual))
+	}
+	if err = s.AddManualPosition(ctx, models.StopperManualInput{ProductID: uuid.New(), StopperID: 9999, From: "2026-11-10"}); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatal("unknown stopper:", err)
+	}
+	list, err := s.Stoppers(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range list {
+		if v.ID == short && (v.Days == nil || *v.Days != 14) || v.ID == plain && v.Days != nil || v.Name == "Новинка" && (v.Days == nil || *v.Days != 28) {
+			t.Fatalf("%+v", v)
 		}
 	}
 }

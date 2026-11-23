@@ -33,7 +33,7 @@ func promoPositions(filter string) string {
 }
 
 func (s *Storage) Stoppers(ctx context.Context) ([]models.Stopper, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT s.id,s.name,s.color,count(p.id) FROM stoppers s
+	rows, err := s.db.QueryContext(ctx, `SELECT s.id,s.name,s.color,s.days,count(p.id) FROM stoppers s
  LEFT JOIN stopper_positions p ON p.stopper_id=s.id GROUP BY s.id ORDER BY s.id`)
 	if err != nil {
 		return nil, err
@@ -42,7 +42,7 @@ func (s *Storage) Stoppers(ctx context.Context) ([]models.Stopper, error) {
 	out := []models.Stopper{}
 	for rows.Next() {
 		var v models.Stopper
-		if err = rows.Scan(&v.ID, &v.Name, &v.Color, &v.Positions); err != nil {
+		if err = rows.Scan(&v.ID, &v.Name, &v.Color, &v.Days, &v.Positions); err != nil {
 			return nil, err
 		}
 		out = append(out, v)
@@ -51,11 +51,11 @@ func (s *Storage) Stoppers(ctx context.Context) ([]models.Stopper, error) {
 }
 func (s *Storage) AddStopper(ctx context.Context, in models.StopperInput) (int64, error) {
 	var id int64
-	err := s.db.QueryRowContext(ctx, "INSERT INTO stoppers(name,color) VALUES($1,$2) RETURNING id", in.Name, in.Color).Scan(&id)
+	err := s.db.QueryRowContext(ctx, "INSERT INTO stoppers(name,color,days) VALUES($1,$2,$3) RETURNING id", in.Name, in.Color, in.Days).Scan(&id)
 	return id, personnelError(err)
 }
 func (s *Storage) SaveStopper(ctx context.Context, id int64, in models.StopperInput) error {
-	return affected(s.db.ExecContext(ctx, "UPDATE stoppers SET name=$2,color=$3 WHERE id=$1", id, in.Name, in.Color))
+	return affected(s.db.ExecContext(ctx, "UPDATE stoppers SET name=$2,color=$3,days=$4 WHERE id=$1", id, in.Name, in.Color, in.Days))
 }
 
 // DeleteStopper keeps the positions; they become positions without a stopper.
@@ -156,18 +156,24 @@ func (s *Storage) updatePositions(ctx context.Context, keys []models.StopperPosi
 	return personnelError(tx.Commit())
 }
 
-// SetPositionsStopper sets or, with a nil stopper, removes the stopper of positions.
+// SetPositionsStopper sets or, with a nil stopper, removes the stopper of positions. A newly set stopper
+// with a duration ends the position on the start date plus its days, unless the position ends earlier
+// (LEAST skips a missing end); setting the same stopper again or removing it keeps the period.
 func (s *Storage) SetPositionsStopper(ctx context.Context, keys []models.StopperPositionKey, stopperID *int64) error {
-	return s.updatePositions(ctx, keys, "UPDATE stopper_positions SET stopper_id=$2 WHERE id=$1", stopperID)
+	return s.updatePositions(ctx, keys, `UPDATE stopper_positions p SET stopper_id=$2,
+ period_to=CASE WHEN d.days IS NULL OR p.stopper_id IS NOT DISTINCT FROM $2 THEN p.period_to ELSE LEAST(p.period_to,p.period_from+d.days) END
+ FROM (SELECT (SELECT days FROM stoppers WHERE id=$2) AS days) d WHERE p.id=$1`, stopperID)
 }
 
 // SetPositionsPeriod sets the period of positions; a nil end means a period without an end.
 func (s *Storage) SetPositionsPeriod(ctx context.Context, keys []models.StopperPositionKey, from string, to *string) error {
 	return s.updatePositions(ctx, keys, "UPDATE stopper_positions SET period_from=$2::date,period_to=$3::date WHERE id=$1", from, to)
 }
+
+// AddManualPosition adds a product by hand; a stopper with a duration gives it an end date.
 func (s *Storage) AddManualPosition(ctx context.Context, in models.StopperManualInput) error {
-	_, err := s.db.ExecContext(ctx, "INSERT INTO stopper_positions(product_id,stopper_id,period_from) VALUES($1,$2,$3::date)", in.ProductID, in.StopperID, in.From)
-	return personnelError(err)
+	return affected(s.db.ExecContext(ctx, `INSERT INTO stopper_positions(product_id,stopper_id,period_from,period_to)
+ SELECT $1,s.id,$3::date,$3::date+s.days FROM stoppers s WHERE s.id=$2`, in.ProductID, in.StopperID, in.From))
 }
 
 // StopperProducts searches the catalog by code or name for manual addition.
