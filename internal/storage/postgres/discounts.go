@@ -13,11 +13,12 @@ func (s *Storage) Discounts(ctx context.Context, timezone string) ([]models.Disc
  FROM prices WHERE period <= (CURRENT_TIMESTAMP AT TIME ZONE $1)
  ORDER BY price_type,product_id,period DESC,doc_id DESC
  )
- SELECT COALESCE(NULLIF(s.sale_point_tag,''),s.id::text),p.product_id,(p.price::numeric(30,2))::text,
+ SELECT COALESCE(NULLIF(s.sale_point_tag,''),s.id::text),COALESCE(pr.code,''),(p.price::numeric(30,2))::text,
  to_char(p.period,'YYYY-MM-DD HH24:MI:SS'),
  COALESCE(to_char(e.period,'YYYY-MM-DD HH24:MI:SS'),''),
  p.doc_id
  FROM current_prices p JOIN stores s ON s.price_type_promo=p.price_type
+ LEFT JOIN products pr ON pr.id=p.product_id
  LEFT JOIN LATERAL (
  SELECT period FROM prices
  WHERE product_id=p.product_id AND price_type=p.price_type

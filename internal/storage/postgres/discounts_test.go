@@ -15,6 +15,10 @@ func TestDiscountsCurrentPriceAndEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	product, cancelled, future, doc := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	const productCode = "00000123456"
+	if _, err := s.AddProduct(ctx, &models.Product{ID: product, Code: productCode, Name: "Product"}); err != nil {
+		t.Fatal(err)
+	}
 	items := []models.Price{
 		{Period: "2020-01-01T00:00:00", PriceType: store.PriceTypePromo, ProductID: product, DocID: doc, Price: "149"},
 		{Period: "2099-01-01T00:00:00", PriceType: store.PriceTypePromo, ProductID: product, DocID: doc, Price: "0"},
@@ -33,7 +37,7 @@ func TestDiscountsCurrentPriceAndEnd(t *testing.T) {
 		t.Fatalf("discounts: %+v", got)
 	}
 	v := got[0]
-	if v.SalePointTag != store.ID.String() || v.ProductID != product.String() || v.DocID != doc.String() || v.Price != "149.00" || v.Start != "2020-01-01 00:00:00" || v.End != "2099-01-01 00:00:00" || !v.WriteOffBonus || v.ApplyOtherDiscounts {
+	if v.SalePointTag != store.ID.String() || v.ProductID != productCode || v.DocID != doc.String() || v.Price != "149.00" || v.Start != "2020-01-01 00:00:00" || v.End != "2099-01-01 00:00:00" || !v.WriteOffBonus || v.ApplyOtherDiscounts {
 		t.Fatalf("%+v", v)
 	}
 	const tag = "Магазин № 1"
