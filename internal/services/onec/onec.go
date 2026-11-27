@@ -60,6 +60,18 @@ func New(cfg Config, stores Stores, products Products) (*Service, error) {
 
 // Do sends a request relative to the configured PAPI base URL. The caller closes the response body.
 func (s *Service) Do(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
+	resp, err := s.do(ctx, method, path, body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		resp.Body.Close()
+		return nil, fmt.Errorf("1C returned HTTP %d", resp.StatusCode)
+	}
+	return resp, nil
+}
+
+func (s *Service) do(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
 	endpoint, err := url.Parse(path)
 	if err != nil || endpoint.IsAbs() || endpoint.Host != "" || strings.HasPrefix(path, "/") {
 		return nil, fmt.Errorf("1C endpoint must be a relative path")
@@ -75,10 +87,6 @@ func (s *Service) Do(ctx context.Context, method, path string, body io.Reader) (
 	resp, err := s.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request 1C: %w", err)
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		resp.Body.Close()
-		return nil, fmt.Errorf("1C returned HTTP %d", resp.StatusCode)
 	}
 	return resp, nil
 }

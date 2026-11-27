@@ -34,6 +34,7 @@ type Config struct {
 }
 
 type Dependencies struct {
+	Returns     hdlr.ReturnRequestService
 	Tasks       hdlr.TaskService
 	Roles       hdlr.RoleService
 	Positions   hdlr.PositionService
@@ -67,6 +68,7 @@ func New(cfg Config, deps Dependencies) *App {
 	handler.ConfigureRoles(deps.Roles)
 	handler.ConfigurePositions(deps.Positions)
 	handler.ConfigureTasks(deps.Tasks)
+	handler.ConfigureReturns(deps.Returns)
 	handler.ConfigureTaskTimezone(cfg.TaskTimezone)
 	tokenMaker := deps.Tokens
 	handler.ConfigureSecurity(tokenMaker)
@@ -100,6 +102,15 @@ func New(cfg Config, deps Dependencies) *App {
 	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/prices", handler.Prices)
 	router.With(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth)).Get("/stocks/{store_id}", handler.Stocks)
 
+	router.Route("/return_request", func(r chi.Router) {
+		r.Use(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth))
+		r.Get("/", handler.ReturnRequests)
+		r.Post("/", handler.ReturnRequests)
+		r.Get("/{id}", handler.ReturnRequests)
+		r.Put("/{id}", handler.ReturnRequests)
+		r.Get("/{id}/status", handler.GetReturnRequestStatus)
+		r.Post("/{id}/status", handler.ReturnRequests)
+	})
 	router.Route("/files", func(r chi.Router) {
 		r.Use(hdlr.GetAuthMiddlewareFunc(tokenMaker, deps.Auth))
 		r.Get("/", handler.Files)

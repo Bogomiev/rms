@@ -28,6 +28,7 @@ type TokenVerifier interface {
 }
 
 type Handler struct {
+	returns        ReturnRequestService
 	tasks          TaskService
 	taskTimezone   *time.Location
 	roles          RoleService

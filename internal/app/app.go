@@ -13,11 +13,13 @@ import (
 	"rms/internal/services/auth"
 	"rms/internal/services/files"
 	"rms/internal/services/marketplace"
+	"rms/internal/services/messagequeue"
 	"rms/internal/services/onec"
 	"rms/internal/services/position"
 	"rms/internal/services/price"
 	"rms/internal/services/pricetag"
 	"rms/internal/services/product"
+	"rms/internal/services/returnrequest"
 	"rms/internal/services/role"
 	"rms/internal/services/stock"
 	"rms/internal/services/stopper"
@@ -67,10 +69,19 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, error)
 	marketplaces := marketplace.New(oneCService)
 	productService.ConfigureInfo(db, marketplaces, cfg.Scheduler.Timezone)
 	productService.ConfigureProductInfo(oneCService)
+	location, err := time.LoadLocation(cfg.Scheduler.Timezone)
+	if err != nil {
+		return nil, errors.Join(err, db.Stop())
+	}
+	queue := messagequeue.New(db)
+	returns := returnrequest.New(db, queue, oneCService, location)
+	queueJob := queue.Job(log, map[string]messagequeue.Handler{
+		returnrequest.Handler: returns.Process,
+	})
 	server := httpapp.New(httpapp.Config{
 		TaskTimezone: cfg.Scheduler.Timezone, TokenTTL: cfg.TokenTTL, RefreshTokenTTL: cfg.RefreshTokenTTL, AppOrigins: cfg.AllowedAppOrigins(), Port: cfg.Port, Timeout: cfg.Timeout, IdleTimeout: cfg.IdleTimeout,
-	}, httpapp.Dependencies{Tasks: task.New(db), Roles: role.New(db), Positions: position.New(db), Files: fileService, Logger: log, Auth: authService, Users: userService, Tokens: tokens, Products: productService, Stores: storeService, Prices: priceService, Discounts: price.NewDiscounts(db, cfg.Scheduler.Timezone), Stoppers: stopper.New(db, cfg.Scheduler.Timezone), PriceTags: pricetag.New(db), Stocks: stock.New(db), ProductInfo: productService, Marketplace: marketplaces})
-	jobs, err := newScheduler(ctx, log, cfg.Scheduler, db, oneCService, priceService)
+	}, httpapp.Dependencies{Returns: returns, Tasks: task.New(db), Roles: role.New(db), Positions: position.New(db), Files: fileService, Logger: log, Auth: authService, Users: userService, Tokens: tokens, Products: productService, Stores: storeService, Prices: priceService, Discounts: price.NewDiscounts(db, cfg.Scheduler.Timezone), Stoppers: stopper.New(db, cfg.Scheduler.Timezone), PriceTags: pricetag.New(db), Stocks: stock.New(db), ProductInfo: productService, Marketplace: marketplaces})
+	jobs, err := newScheduler(ctx, log, cfg.Scheduler, db, oneCService, priceService, queueJob, returns.SyncActiveStatuses)
 	if err != nil {
 		return nil, errors.Join(err, db.Stop())
 	}

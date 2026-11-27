@@ -29,6 +29,14 @@ onec:
 scheduler:
   timezone: Asia/Vladivostok
   jobs:
+    message_queue:
+      enabled: true
+      schedule: "@every 5s"
+      timeout: 2m
+    return_status_sync:
+      enabled: true
+      schedule: "@every 1m"
+      timeout: 1m
     today_price_changes_sync:
       enabled: true
       schedule: "0 * * * *"

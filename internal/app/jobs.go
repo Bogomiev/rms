@@ -17,7 +17,7 @@ type storeSyncer interface {
 	SyncStocks(context.Context) error
 }
 
-func newScheduler(ctx context.Context, log *slog.Logger, cfg scheduler.Config, db sessionCleaner, oneC storeSyncer, prices *price.Service) (*scheduler.Scheduler, error) {
+func newScheduler(ctx context.Context, log *slog.Logger, cfg scheduler.Config, db sessionCleaner, oneC storeSyncer, prices *price.Service, queueJob, returnStatusJob scheduler.Job) (*scheduler.Scheduler, error) {
 	registry := map[string]scheduler.Job{
 		"session_cleanup":   sessionCleanupJob(log, db),
 		"store_sync":        oneC.SyncStores,
@@ -34,6 +34,14 @@ func newScheduler(ctx context.Context, log *slog.Logger, cfg scheduler.Config, d
 		jobs[name] = job
 	}
 	cfg.Jobs = jobs
+	registry["message_queue"] = queueJob
+	registry["return_status_sync"] = returnStatusJob
+	if _, exists := jobs["message_queue"]; !exists {
+		jobs["message_queue"] = scheduler.JobConfig{Enabled: true, Schedule: "@every 5s", Timeout: 2 * time.Minute}
+	}
+	if _, exists := jobs["return_status_sync"]; !exists {
+		jobs["return_status_sync"] = scheduler.JobConfig{Enabled: true, Schedule: "@every 1m", Timeout: time.Minute}
+	}
 	if _, exists := jobs["today_price_changes_sync"]; !exists {
 		jobs["today_price_changes_sync"] = scheduler.JobConfig{Enabled: true, Schedule: "0 * * * *", Timeout: 5 * time.Minute}
 	}
